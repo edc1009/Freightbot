@@ -76,104 +76,235 @@ export default function AgentOpsUI() {
         setIsProcessing(true);
 
         try {
-            const result = await processEmailWithAgent(keyToUse, emailData);
+            const result = await processEmailWithAgent(keyToUse, emailData, shipments);
             console.log('🎉 Agent result:', result);
 
-            // Handle new Free-hand Skill schema
-            // New schema uses 'shipment_match' instead of 'shipment'
-            const shipmentMatch = result.shipment_match || result.shipment || {};
-            const refs = shipmentMatch.references_found || {};
+            // 1. Common Analysis (Email Type, Drafts, etc.)
+            // The 'email_analysis' and 'email_draft' apply to the Batch as a whole usually,
+            // or we assume they apply to the primary intent.
             const emailType = result.email_analysis?.type || 'UNKNOWN';
 
-            // Generate reference from extracted references
-            let reference = refs.bl_number || refs.container_number || refs.booking_number || refs.po_number;
-            if (!reference) {
-                // Try to extract from email subject
-                const subjectMatch = emailData.subject?.match(/([A-Z]{2,}\d{6,})/);
-                if (subjectMatch) reference = subjectMatch[1];
-                else reference = `REF-${Date.now()}`;
+            // 2. Iterate through Processed Shipments (Batch Support)
+            // If legacy output (single object), wrap in array.
+            const processedList = result.processed_shipments || [result.shipment_match || {}];
+
+            // STRICT WORKFLOW RULE (用戶要求):
+            // If email type is 'CARRIER_AN', we MUST have a matching existing shipment (Step 1: Order Intake).
+            // We cannot create a NEW shipment from a Carrier AN. It must be an update.
+            let validItems = processedList;
+            let skippedCount = 0;
+
+            if (emailType === 'CARRIER_AN') {
+                console.log('🔒 Strict Workflow: Filtering Carrier ANs to only match existing shipments.');
+                validItems = processedList.filter(item => {
+                    const isFound = item.match_result === 'FOUND';
+                    if (!isFound) skippedCount++;
+                    return isFound;
+                });
             }
 
-            const newShipment = {
-                id: generateShipmentId(),
-                reference: reference,
-                customer: result.email_analysis?.sender?.name || emailData.from.split('@')[0],
-                origin: 'TBD',
-                destination: 'TBD',
-                status: result.status_update?.new_status || 'new',
-                step: result.playbook?.current_step || 1,
-                eta: 'TBD',
-                alerts: result.escalation?.required ? 1 : 0,
-                vessel: 'TBD',
-                bl: refs.bl_number || reference,
-                container: refs.container_number || '',
-                isfFiled: false,
-                playbook: result.playbook?.selected || 'free-hand',
-                stepName: result.playbook?.step_name || 'Order Intake',
-                pendingActions: [],
-                // Store Agent analysis
-                emailType: emailType,
-                agentAnalysis: result.email_analysis,
-                agentAction: result.action,
-                suggestReason: result.email_analysis?.summary,
-                emails: [
-                    // Add initial email
-                    {
-                        id: `e-${Date.now()}`,
-                        category: result.playbook?.current_step || 1,
-                        direction: 'inbound',
-                        from: emailData.from,
-                        to: 'Agent',
-                        subject: emailData.subject,
-                        body: emailData.body,
+            // DE-DUPLICATION (防止同一封信的多個附件導致重複建單)
+            // Group by Reference (B/L or Booking Ref)
+            const uniqueItemsMap = new Map();
+            validItems.forEach(item => {
+                // Use BL as primary key, fallback to Reference
+                const key = item.extracted_data?.bl_number || item.reference;
+                if (!uniqueItemsMap.has(key)) {
+                    uniqueItemsMap.set(key, item);
+                } else {
+                    // If we have duplicates, we might want to merge data, but for now taking the first one is safer
+                    console.log(`⚠️ Duplicate item found in batch for key ${key}, skipping duplicate.`);
+                }
+            });
+            const uniqueItems = Array.from(uniqueItemsMap.values());
+
+
+            let newShipmentsToAdd = [];
+            let updatedShipmentsList = [...shipments];
+
+            uniqueItems.forEach(shipmentItem => {
+                const matchResult = shipmentItem.match_result || 'NOT_FOUND';
+                const extractedData = shipmentItem.extracted_data || result.shipment_data || {};
+
+                // Construct the email object for this specific transaction
+                const transactionEmail = {
+                    id: `e-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    category: result.playbook?.current_step || 1,
+                    direction: 'inbound',
+                    from: emailData.from,
+                    to: 'Agent',
+                    subject: emailData.subject,
+                    body: emailData.body,
+                    timestamp: formatDate(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    read: true,
+                    autoLevel: 'manual',
+                    attachments: emailData.attachments || [] // Store attachments
+                };
+
+                // --- Scenario A: UPDATE Existing Shipment ---
+                if (matchResult === 'FOUND' && shipmentItem.shipment_id) {
+                    console.log(`🔄 Updating Shipment ${shipmentItem.shipment_id}`);
+                    updatedShipmentsList = updatedShipmentsList.map(s => {
+                        if (s.id === shipmentItem.shipment_id) {
+                            // Force Step 3 (Verify AN Data) if we receive a Carrier AN and we are at Step 2
+                            let nextStep = result.playbook?.current_step || s.step;
+                            let nextStepName = result.playbook?.step_name || s.stepName;
+
+                            if (emailType === 'CARRIER_AN' && s.step === 2) {
+                                console.log('📍 Carrier AN received for Step 2 shipment. Forcing advance to Step 3.');
+                                nextStep = 3;
+                                nextStepName = 'Verify AN Data';
+                            }
+
+                            return {
+                                ...s,
+                                origin: (s.origin === 'TBD' || !s.origin) ? (extractedData.origin || s.origin) : s.origin,
+                                destination: (s.destination === 'TBD' || !s.destination) ? (extractedData.destination || s.destination) : s.destination,
+                                eta: (s.eta === 'TBD' || !s.eta) ? (extractedData.eta || s.eta) : s.eta,
+                                vessel: (s.vessel === 'TBD' || !s.vessel) ? (extractedData.vessel || s.vessel) : s.vessel,
+                                // Update HBL if found
+                                hbl: (!s.hbl && extractedData.hbl_number) ? extractedData.hbl_number : s.hbl,
+                                firmsCode: (!s.firmsCode && extractedData.firms_code) ? extractedData.firms_code : s.firmsCode,
+                                // Merge financials (charges) from API result - FIX for Issue #2
+                                financials: result.financials || s.financials,
+                                // Merge party info from extracted data - FIX for Issue #3
+                                shipper: extractedData.shipper || s.shipper,
+                                consignee: extractedData.consignee || s.consignee,
+                                notifyParty: extractedData.notify_party || s.notifyParty,
+                                // IMPORTANT: Merge Email History
+                                emails: [transactionEmail, ...(s.emails || [])],
+                                // Update Status based on Agent's Playbook Analysis
+                                status: (emailType === 'CARRIER_AN' || nextStep > s.step) ? 'in-progress' : s.status,
+                                step: Math.max(s.step, nextStep),
+                                stepName: nextStepName,
+                            };
+                        }
+                        return s;
+                    });
+
+                    // Add Activity Log for Update
+                    const updateActivity = {
+                        id: Date.now() + Math.random(),
                         timestamp: formatDate(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                        read: true,
-                        autoLevel: 'manual'
+                        type: 'update',
+                        shipment: shipmentItem.reference || shipmentItem.shipment_id,
+                        message: `Updated with new email/data: ${result.email_analysis?.summary || 'New info received'}`,
+                        // Attach the full email object so ActivityModal can show body & attachments
+                        email: transactionEmail
+                    };
+                    setActivities(prev => [updateActivity, ...prev]);
+
+                }
+                // --- Scenario B: CREATE New Shipment ---
+                else {
+                    console.log(`✨ Creating New Shipment for ${shipmentItem.reference}`);
+                    // Generate reference
+                    let reference = shipmentItem.reference;
+                    if (!reference) {
+                        const subjectMatch = emailData.subject?.match(/([A-Z]{2,}\d{6,})/);
+                        if (subjectMatch) reference = subjectMatch[1];
+                        else reference = `REF-${Date.now()}`;
                     }
-                ]
-            };
 
+                    // Double check if we already added this reference in THIS batch (newShipmentsToAdd)
+                    const alreadyInBatch = newShipmentsToAdd.find(s => s.reference === reference || s.bl === extractedData.bl_number);
+                    if (alreadyInBatch) {
+                        console.log(`⚠️ Duplicate reference ${reference} in current batch processing, skipping.`);
+                        return;
+                    }
 
-            // Add pending action if approval needed
-            if (result.action?.authority === 'APPROVE') {
-                newShipment.pendingActions.push({
-                    type: 'approve',
-                    step: 1,
-                    action: result.action?.type || 'review',
-                    title: result.action?.description || 'Review required',
-                    desc: result.email_draft?.subject || result.email_analysis?.summary || 'Approve action',
-                    recipients: result.email_draft?.to || [],
-                    riskReason: result.email_analysis?.summary || 'Agent drafted response'
-                });
-            }
+                    const newShipment = {
+                        id: generateShipmentId(),
+                        reference: reference,
+                        customer: result.email_analysis?.sender?.name || emailData.from.split('@')[0],
+                        origin: extractedData.origin || 'TBD',
+                        destination: extractedData.destination || 'TBD',
+                        status: 'new',
+                        step: result.playbook?.current_step || 1,
+                        eta: extractedData.eta || 'TBD',
+                        alerts: result.escalation?.required ? 1 : 0,
+                        vessel: extractedData.vessel || 'TBD',
+                        bl: extractedData.bl_number || reference,
+                        container: extractedData.container_number || '',
+                        hbl: extractedData.hbl_number || '',
+                        firmsCode: extractedData.firms_code || '', // Map FIRMS Code
+                        ref: extractedData.booking_number || '',
+                        // Party Information - FIX for Issue #3
+                        shipper: extractedData.shipper || '',
+                        consignee: extractedData.consignee || '',
+                        notifyParty: extractedData.notify_party || '',
+                        // Financials - FIX for Issue #2
+                        financials: result.financials || null,
+                        isfFiled: false,
+                        playbook: result.playbook?.selected || 'free-hand',
+                        stepName: result.playbook?.step_name || 'Order Intake',
+                        pendingActions: [],
+                        emailType: emailType,
+                        agentAnalysis: result.email_analysis,
+                        agentAction: result.action,
+                        suggestReason: result.email_analysis?.summary,
+                        emails: [transactionEmail]
+                    };
 
-            // Add manual action if escalation required
-            if (result.escalation?.required || result.action?.authority === 'MANUAL') {
-                newShipment.pendingActions.push({
-                    type: 'manual',
-                    step: 1,
-                    action: 'escalation',
-                    title: 'Human Review Required',
-                    desc: result.escalation?.reason || result.action?.description || 'Needs human attention',
-                    riskReason: `Urgency: ${result.escalation?.urgency || 'MEDIUM'}`
-                });
-                newShipment.alerts = 1;
-            }
+                    // Add Pending Actions (Approve/Escalate)
+                    if (result.action?.authority === 'APPROVE') {
+                        newShipment.pendingActions.push({
+                            type: 'approve',
+                            step: newShipment.step,
+                            action: result.action?.type || 'review',
+                            title: result.action?.description || 'Review required',
+                            desc: result.email_draft?.subject || result.email_analysis?.summary || 'Approve action',
+                            // Store the draft here so we can auto-send on approve
+                            draft: result.email_draft,
+                            recipients: result.email_draft?.to || [],
+                            riskReason: result.email_analysis?.summary || 'Agent drafted response'
+                        });
+                    }
 
-            console.log('📦 Creating shipment:', newShipment);
-            setShipments(prev => [...prev, newShipment]);
+                    if (result.escalation?.required || result.action?.authority === 'MANUAL') {
+                        newShipment.pendingActions.push({
+                            type: 'manual',
+                            step: newShipment.step,
+                            action: 'escalation',
+                            title: 'Human Review Required',
+                            desc: result.escalation?.reason || result.action?.description || 'Needs human attention',
+                            riskReason: `Urgency: ${result.escalation?.urgency || 'MEDIUM'}`
+                        });
+                        newShipment.alerts = 1;
+                    }
 
-            // Add activity
+                    newShipmentsToAdd.push(newShipment);
+                }
+            });
+
+            // Update State Once
+            setShipments([...updatedShipmentsList, ...newShipmentsToAdd]);
+
+            // Add General Activity
             const newActivity = {
                 id: Date.now(),
                 timestamp: formatDate(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
                 type: 'email-received',
-                shipment: newShipment.reference,
-                message: `${emailType} processed: ${result.email_analysis?.summary || 'Created shipment entry'}`
+                shipment: newShipmentsToAdd.length > 0 ? newShipmentsToAdd[0].reference : (uniqueItems.length > 0 ? uniqueItems[0].reference : 'Batch Update'),
+                message: `${emailType} processed. Updated: ${updatedShipmentsList.length - shipments.length + (uniqueItems.length - newShipmentsToAdd.length)}, Created: ${newShipmentsToAdd.length}${skippedCount > 0 ? `, Skipped (No Match): ${skippedCount}` : ''}`,
+                // Link the first email for context, though this is a batch log
+                email: uniqueItems.length > 0 ? {
+                    id: `e-${Date.now()}-batch`,
+                    category: 1,
+                    direction: 'inbound',
+                    from: emailData.from,
+                    to: 'Agent',
+                    subject: emailData.subject,
+                    body: '(Batch Processed) ' + emailData.body,
+                    timestamp: formatDate(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    read: true,
+                    autoLevel: 'manual',
+                    attachments: emailData.attachments || []
+                } : null
             };
             setActivities(prev => [newActivity, ...prev]);
 
-            // Add message if email draft exists
+            // Add draft message if needed (only one draft supported per email for now)
             if (result.email_draft?.should_send) {
                 const newMessage = {
                     id: Date.now(),
@@ -215,6 +346,78 @@ export default function AgentOpsUI() {
     const toggleISFFiled = (id) => {
         setShipments(shipments.map(s => s.id === id ? { ...s, isfFiled: !s.isfFiled } : s));
         if (selectedShipment?.id === id) setSelectedShipment({ ...selectedShipment, isfFiled: !selectedShipment.isfFiled });
+    };
+
+    // Auto-Send Logic in handleApprove
+    const handleApprove = (id, actionIndex) => {
+        console.log('Approved action for:', id);
+
+        setShipments(prev => prev.map(s => {
+            if (s.id === id) {
+                const actionToApprove = s.pendingActions[actionIndex];
+
+                // AUTO-SEND EMAIL:
+                let newEmails = [...s.emails];
+                if (actionToApprove && (actionToApprove.draft || (actionToApprove.recipients && actionToApprove.recipients.length > 0))) {
+                    console.log('📧 Auto-sending email on Approve');
+                    const sentEmail = {
+                        id: `e-${Date.now()}-sent`,
+                        category: s.step,
+                        direction: 'outbound',
+                        from: 'Agent',
+                        to: actionToApprove.recipients?.join(', ') || actionToApprove.draft?.to?.join(', ') || 'Customer',
+                        subject: actionToApprove.draft?.subject || 'Shipment Update',
+                        body: actionToApprove.draft?.body || 'Content approved and sent.',
+                        timestamp: formatDate(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                        read: true,
+                        autoLevel: 'auto',
+                        attachments: actionToApprove.draft?.attachments || []
+                    };
+                    newEmails.unshift(sentEmail);
+
+                    // Log Activity specifically for this sent email
+                    const sentActivity = {
+                        id: Date.now() + 1,
+                        timestamp: formatDate(new Date()) + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                        type: 'email-sent',
+                        shipment: s.reference,
+                        message: `Auto-sent email to ${sentEmail.to}: ${sentEmail.subject}`,
+                        email: sentEmail
+                    };
+                    setActivities(prevAct => [sentActivity, ...prevAct]);
+                }
+
+                // Remove the action
+                const newActions = s.pendingActions.filter((_, i) => i !== actionIndex);
+
+                // Update Step Logic
+                const currentStep = s.step;
+                let nextStep = currentStep;
+                let nextStepName = s.stepName;
+
+                // Advance step if "Order Intake" (1) and approved -> "Await Carrier AN" (2)
+                if (currentStep === 1) {
+                    nextStep = 2;
+                    nextStepName = 'Await Carrier AN';
+                }
+
+                const updatedS = {
+                    ...s,
+                    alerts: Math.max(0, s.alerts - 1),
+                    step: nextStep,
+                    stepName: nextStepName,
+                    pendingActions: newActions,
+                    emails: newEmails
+                };
+
+                if (selectedShipment?.id === id) {
+                    setSelectedShipment(updatedS);
+                }
+
+                return updatedS;
+            }
+            return s;
+        }));
     };
 
     const stats = {
@@ -260,6 +463,7 @@ export default function AgentOpsUI() {
                             setSelectedShipment={setSelectedShipment}
                             editingAction={editingAction}
                             setEditingAction={setEditingAction}
+                            onApprove={handleApprove} // Pass to Action Center too if needed
                         />
                     )}
 
@@ -307,6 +511,7 @@ export default function AgentOpsUI() {
                         setShipments={setShipments}
                         setSelectedShipment={setSelectedShipment}
                         toggleISFFiled={toggleISFFiled}
+                        onApprove={handleApprove}
                     />
                 )}
 

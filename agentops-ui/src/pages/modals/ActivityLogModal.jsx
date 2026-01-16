@@ -1,7 +1,8 @@
 import React from 'react';
 import {
     ArrowLeft, X, Inbox, ChevronDown, CheckCircle,
-    ArrowUpRight, ArrowDownLeft, Users, Zap, Edit3, Shield
+    ArrowUpRight, ArrowDownLeft, Users, Zap, Edit3, Shield,
+    Paperclip, FileText
 } from 'lucide-react';
 import { PLAYBOOKS, AUTOMATION_LEVELS, stepLabels, stepIcons } from '../../constants';
 
@@ -163,6 +164,65 @@ function EmailItem({ email, isExpanded, onToggle }) {
                     <div style={{ padding: 16, background: 'var(--muted)', borderRadius: 8 }}>
                         <p style={{ fontSize: 14, color: 'var(--foreground)', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{email.body}</p>
                     </div>
+                    {/* Attachments Section */}
+                    {email.attachments && email.attachments.length > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted-foreground)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Paperclip style={{ width: 14, height: 14 }} />
+                                {email.attachments.length} Attachment{email.attachments.length > 1 ? 's' : ''}
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {email.attachments.map((att, idx) => (
+                                    <div
+                                        key={idx}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 8,
+                                            padding: '8px 12px', background: 'var(--card)',
+                                            border: '1px solid var(--border)', borderRadius: 8,
+                                            fontSize: 13, color: 'var(--foreground)', cursor: 'pointer'
+                                        }}
+                                        onClick={() => {
+                                            try {
+                                                // 1. Try Blob approach (Best for performance/stability)
+                                                if (att.content && att.content.startsWith('data:')) {
+                                                    const base64Arr = att.content.split(',');
+                                                    const base64 = base64Arr[1] || base64Arr[0]; // Handle if data: prefix is missing
+                                                    const mime = base64Arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+
+                                                    const byteCharacters = atob(base64);
+                                                    const byteNumbers = new Array(byteCharacters.length);
+                                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                                    }
+                                                    const byteArray = new Uint8Array(byteNumbers);
+                                                    const blob = new Blob([byteArray], { type: mime });
+                                                    const blobUrl = URL.createObjectURL(blob);
+                                                    window.open(blobUrl, '_blank');
+                                                } else if (att.content) {
+                                                    // 2. Fallback for non-base64 (e.g. normal URLs)
+                                                    window.open(att.content, '_blank');
+                                                } else {
+                                                    alert('File content not available.');
+                                                }
+                                            } catch (err) {
+                                                console.error('Error opening file:', err);
+                                                // 3. Fallback to basic iframe approach if Blob fails
+                                                const win = window.open();
+                                                if (win) {
+                                                    win.document.write('<iframe src="' + att.content + '" frameborder="0" style="border:0;width:100%;height:100%" allowfullscreen></iframe>');
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <div style={{ padding: 4, background: 'oklch(0.96 0.01 200)', borderRadius: 4 }}>
+                                            <FileText style={{ width: 14, height: 14, color: 'var(--sidebar-foreground)' }} />
+                                        </div>
+                                        <span>{att.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
