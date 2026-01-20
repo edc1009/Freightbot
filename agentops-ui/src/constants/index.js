@@ -19,12 +19,13 @@ export const PLAYBOOKS = {
         recommended: ['Import', 'FCL', 'Port to Door'],
         conditions: { direction: 'import', containerType: 'FCL', delivery: 'door' },
         steps: [
-            { name: 'Docs Intake', default: 'auto' },
-            { name: 'ISF Coordination', default: 'approve', manualTriggers: ['dispute', 'penalty', 'late'] },
-            { name: 'Ocean Tracking', default: 'auto' },
+            { name: 'ISF Filing', default: 'approve', manualTriggers: ['dispute', 'penalty', 'late'] },
+            { name: 'Await Arrival Notice', default: 'auto' },
             { name: 'Arrival Notice', default: 'approve' },
             { name: 'Truck Scheduling', default: 'approve', manualTriggers: ['surcharge', 'dispute'] },
-            { name: 'Customs Clearance', default: 'auto', manualTriggers: ['hold', 'exam'] },
+            { name: 'Customs Coordination', default: 'auto', manualTriggers: ['hold', 'exam'] },
+            { name: 'Duty Confirmation', default: 'auto' },
+            { name: 'Warehouse Coordination', default: 'approve', manualTriggers: ['exception'] },
             { name: 'Billing & Collection', default: 'approve', manualTriggers: ['dispute', 'claim'] }
         ]
     },
@@ -35,61 +36,12 @@ export const PLAYBOOKS = {
         recommended: ['Import', 'LCL', 'CFS to Door'],
         conditions: { direction: 'import', containerType: 'LCL', delivery: 'door' },
         steps: [
-            { name: 'Docs Intake', default: 'auto' },
-            { name: 'ISF Coordination', default: 'approve' },
-            { name: 'Ocean Tracking', default: 'auto' },
+            { name: 'ISF Filing', default: 'approve' },
+            { name: 'Await Arrival Notice', default: 'auto' },
             { name: 'CFS Coordination', default: 'approve', manualTriggers: ['exception'] },
             { name: 'Customs Clearance', default: 'auto', manualTriggers: ['hold', 'exam'] },
             { name: 'Final Mile Delivery', default: 'approve', manualTriggers: ['surcharge'] },
             { name: 'Billing & Collection', default: 'approve', manualTriggers: ['dispute'] }
-        ]
-    },
-    'export-fcl': {
-        id: 'export-fcl',
-        name: 'Export FCL – Standard',
-        desc: 'Door → Port → Vessel',
-        recommended: ['Export', 'FCL', 'Door to Port'],
-        conditions: { direction: 'export', containerType: 'FCL', delivery: 'port' },
-        steps: [
-            { name: 'Booking & SI', default: 'approve' },
-            { name: 'Empty Pickup', default: 'approve' },
-            { name: 'CY Cutoff Reminder', default: 'auto' },
-            { name: 'Gate-in Confirmation', default: 'auto' },
-            { name: 'Departure Notice', default: 'auto' },
-            { name: 'Exception Handling', default: 'manual' },
-            { name: 'Billing', default: 'approve' }
-        ]
-    },
-    'import-ddp': {
-        id: 'import-ddp',
-        name: 'Import DDP – Door to Door',
-        desc: 'High control, high risk',
-        recommended: ['Import', 'DDP', 'Full Service'],
-        conditions: { direction: 'import', containerType: 'Any', delivery: 'ddp', risk: 'high' },
-        steps: [
-            { name: 'Docs Intake', default: 'auto' },
-            { name: 'Customs & Duty Planning', default: 'approve' },
-            { name: 'Duty Payment Auth', default: 'manual' },
-            { name: 'Last-mile Scheduling', default: 'approve', manualTriggers: ['claim', 'surcharge'] },
-            { name: 'Delivery Confirmation', default: 'auto' },
-            { name: 'Claims & Exceptions', default: 'manual' },
-            { name: 'Billing', default: 'manual' }
-        ]
-    },
-    'broker-led': {
-        id: 'broker-led',
-        name: 'Broker-led Import',
-        desc: 'Forwarder coordinates, broker clears',
-        recommended: ['Import', 'Broker Handles Customs'],
-        conditions: { direction: 'import', containerType: 'Any', brokerLed: true },
-        steps: [
-            { name: 'Docs Intake', default: 'auto' },
-            { name: 'Forward to Broker', default: 'auto' },
-            { name: 'Broker Follow-up', default: 'auto' },
-            { name: 'Arrival Notice', default: 'approve' },
-            { name: 'Truck/Warehouse', default: 'approve', manualTriggers: ['exception'] },
-            { name: 'Clearance Result', default: 'auto' },
-            { name: 'Billing', default: 'approve', manualTriggers: ['dispute'] }
         ]
     },
     'free-hand': {
@@ -109,7 +61,7 @@ export const PLAYBOOKS = {
 };
 
 // Step labels and icons
-export const stepLabels = ['ISF Filing', 'Arrival Notice', 'Trucker Coordination', 'Customs Coordination', 'Duty Confirmation', 'Warehouse Coordination', 'Billing & Collection'];
+export const stepLabels = ['ISF Filing', 'Await Arrival Notice', 'Arrival Notice', 'Trucker Coordination', 'Customs Coordination', 'Duty Confirmation', 'Warehouse Coordination', 'Billing & Collection'];
 export const stepIcons = [FileText, Send, Truck, Building, DollarSign, Warehouse, FileText];
 
 // Design system CSS

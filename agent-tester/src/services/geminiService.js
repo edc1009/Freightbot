@@ -6,7 +6,7 @@ const GEMINI_MODEL = 'gemini-3-pro-preview';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 // Import Agent Skill from root directory (工具)
-import AGENT_SKILL_MD from '../../../agentops-skill.md?raw';
+import AGENT_SKILL_MD from '../../agentops-skill.md?raw';
 
 // Defined Output Schema for Structured JSON
 const RESPONSE_SCHEMA = {
@@ -287,27 +287,16 @@ OUTPUT:
 - **CONSTRAINT**: Each string field (vessel, origin, destination) MUST be under 100 characters. If you find yourself writing more, STOP and summarize.`;
 
 // Get API Key from environment variable
-// Get API Key from environment variable
 export const getApiKey = () => {
-    // Priority: Vite env (Browser/Dev) -> Process env (Node/Test)
-    try {
-        if (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) {
-            return import.meta.env.VITE_GEMINI_API_KEY;
-        }
-    } catch (e) {
-        // Ignore, explicit fallback
+    if (typeof process !== 'undefined' && process.env && process.env.VITE_GEMINI_API_KEY) {
+        return process.env.VITE_GEMINI_API_KEY;
     }
-
+    // Safe access for import.meta.env
     try {
-        // Safe check for process.env
-        if (typeof process !== 'undefined' && process?.env?.VITE_GEMINI_API_KEY) {
-            return process.env.VITE_GEMINI_API_KEY;
-        }
+        return import.meta.env.VITE_GEMINI_API_KEY || '';
     } catch (e) {
-        // Ignore
+        return '';
     }
-
-    return '';
 };
 
 export async function processEmailWithAgent(apiKey, emailData, existingShipments = []) {
@@ -577,3 +566,25 @@ export async function testApiConnection(apiKey) {
         return { success: false, error: error.message };
     }
 }
+
+// Add extractDocumentData which was implicitly in the 'ProcessEmail' but user wants isolated extraction
+export const geminiService = {
+    // Adapter to reuse logic for simple doc extraction
+    // It mocks an 'email' structure to use the existing prompt logic
+    extractDocumentData: async (base64Content, type = 'general') => {
+        const mockEmail = {
+            from: 'tester@local.host',
+            subject: `Test Document: ${type}`,
+            body: 'Please analyze this attached document.',
+            attachments: [{
+                name: 'uploaded_document.pdf',
+                type: 'application/pdf',
+                content: base64Content
+            }]
+        };
+
+        // Reuse processEmailWithAgent but we might need to export it or bind it
+        const result = await processEmailWithAgent(getApiKey(), mockEmail);
+        return result;
+    }
+};

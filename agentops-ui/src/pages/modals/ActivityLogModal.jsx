@@ -13,12 +13,59 @@ export default function ActivityLogModal({
     expandedCategory,
     setExpandedCategory,
     selectedEmail,
-    setSelectedEmail
+    setSelectedEmail,
+    activities = [] // New prop
 }) {
-    // Only use real emails stored on the shipment, no mock data
+    // 1. Get Emails
     const emails = shipment.emails || [];
+
+    // 2. Map Activities to Pseudo-Emails
+    const shipmentActivities = activities.filter(a => a.shipment === shipment.reference || a.shipment === shipment.id);
+    const activityItems = shipmentActivities.map(a => {
+        let category = 1; // Default
+        const msg = a.message?.toLowerCase() || '';
+        const type = a.type?.toLowerCase() || '';
+
+        // Heuristic Categorization
+        if (msg.includes('isf') || type.includes('isf')) category = 1;
+        else if (msg.includes('arrival notice') || msg.includes('an ')) category = 3; // Step 3
+        else if (msg.includes('trucker') || msg.includes('delivery')) category = 4; // Step 4
+        else if (msg.includes('customs') || msg.includes('entry')) category = 5;    // Step 5
+        else if (msg.includes('warehouse')) category = 7;                           // Step 7
+        else if (msg.includes('payment') || msg.includes('bill')) category = 8;     // Step 8
+        else if (msg.includes('release')) category = 5;                             // Step 5 (Release)
+        else category = shipment.step || 1; // Fallback to current step
+
+        return {
+            id: `act-${a.timestamp}-${Math.random()}`,
+            category,
+            direction: 'system', // Special direction for rendering
+            from: 'System',
+            to: '-',
+            subject: a.type === 'email-sent' ? 'Email Sent' : a.type === 'document' ? 'Document Generated' : 'System Activity',
+            body: a.message,
+            timestamp: new Date(a.timestamp).toLocaleString(),
+            read: true,
+            autoLevel: 'auto',
+            attachments: a.email?.attachments || [] // If activity wrapped an email
+        };
+    });
+
+    // 3. Merge and Group
+    const allItems = [...emails, ...activityItems];
+    // Deduplicate by ID if necessary (though IDs should be unique)
+
     const grouped = {};
-    emails.forEach(e => { if (!grouped[e.category]) grouped[e.category] = []; grouped[e.category].push(e); });
+    allItems.forEach(e => {
+        if (!grouped[e.category]) grouped[e.category] = [];
+        grouped[e.category].push(e);
+    });
+
+    // sorting
+    Object.keys(grouped).forEach(k => {
+        grouped[k].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    });
+
     const categories = Object.keys(grouped).map(Number).sort((a, b) => a - b);
     const playbook = PLAYBOOKS[shipment.playbook];
 
@@ -75,8 +122,27 @@ function CategorySection({ category, emails, playbook, shipment, isExpanded, onT
     const stepConfig = playbook?.steps[category - 1];
     const stepLevel = stepConfig?.default || 'auto';
     const levelConfig = stepLevel === 'auto' ? AUTOMATION_LEVELS.AUTO : stepLevel === 'approve' ? AUTOMATION_LEVELS.APPROVE : AUTOMATION_LEVELS.MANUAL;
-    const isComplete = category < shipment.step;
-    const isCurrent = category === shipment.step;
+
+    // Correct completion check for parallel items
+    // If this category is a parallel task (3=Trucker, 4=Customs, 6=Warehouse), check specific completion
+    const TASK_MAP = {
+        3: 'trucker_coordination',
+        4: 'customs_coordination',
+        6: 'warehouse_coordination'
+    };
+
+    let isComplete = false;
+    if (shipment.status === 'completed') {
+        isComplete = true;
+    } else if (TASK_MAP[category - 1]) {
+        isComplete = (shipment.completedTasks || []).includes(TASK_MAP[category - 1]);
+    } else {
+        isComplete = category < shipment.step;
+    }
+
+    const isCurrent = !isComplete && (
+        (TASK_MAP[category - 1]) ? shipment.step >= 4 && shipment.step < 8 : category === shipment.step
+    );
 
     return (
         <div style={{ background: 'var(--muted)', borderRadius: 14, overflow: 'hidden' }}>
@@ -91,7 +157,7 @@ function CategorySection({ category, emails, playbook, shipment, isExpanded, onT
                             <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'var(--muted)', color: 'var(--muted-foreground)' }}>{levelConfig.label}</span>
                         </div>
                         <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: '2px 0 0 0' }}>
-                            {isComplete ? `✓ Completed • ${emails.length} actions` : isCurrent ? `In progress • ${emails.length} actions` : `${emails.length} actions`}
+                            {isComplete ? `✓ Completed • ${emails.length} events` : isCurrent ? `In progress • ${emails.length} events` : `${emails.length} events`}
                         </p>
                     </div>
                 </div>
@@ -119,19 +185,24 @@ function EmailItem({ email, isExpanded, onToggle }) {
     const isApprove = email.autoLevel === 'approve' || email.autoLevel === 'draft';
     const isManual = email.autoLevel === 'manual';
     const isThirdParty = email.direction === 'third-party';
+    const isSystem = email.direction === 'system';
 
     return (
-        <div onClick={onToggle} style={{ background: isThirdParty ? 'oklch(0.98 0.01 280)' : 'var(--card)', borderRadius: 10, cursor: 'pointer', border: isThirdParty ? '1px dashed oklch(0.75 0.08 280)' : '1px solid var(--border)', overflow: 'hidden' }}>
+        <div onClick={onToggle} style={{ background: isThirdParty ? 'oklch(0.98 0.01 280)' : isSystem ? 'oklch(0.97 0 0)' : 'var(--card)', borderRadius: 10, cursor: 'pointer', border: isThirdParty ? '1px dashed oklch(0.75 0.08 280)' : isSystem ? '1px solid var(--border)' : '1px solid var(--border)', overflow: 'hidden' }}>
             {/* Email Header */}
             <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, background: isThirdParty ? 'oklch(0.9 0.06 280)' : email.direction === 'outbound' ? 'var(--primary)' : 'oklch(0.6 0.12 250)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {isThirdParty ? <Users style={{ width: 18, height: 18, color: 'oklch(0.45 0.15 280)' }} /> : email.direction === 'outbound' ? <ArrowUpRight style={{ width: 18, height: 18, color: 'white' }} /> : <ArrowDownLeft style={{ width: 18, height: 18, color: 'white' }} />}
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: isSystem ? 'var(--muted)' : isThirdParty ? 'oklch(0.9 0.06 280)' : email.direction === 'outbound' ? 'var(--primary)' : 'oklch(0.6 0.12 250)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {isSystem ? <Zap style={{ width: 18, height: 18, color: 'var(--muted-foreground)' }} /> : isThirdParty ? <Users style={{ width: 18, height: 18, color: 'oklch(0.45 0.15 280)' }} /> : email.direction === 'outbound' ? <ArrowUpRight style={{ width: 18, height: 18, color: 'white' }} /> : <ArrowDownLeft style={{ width: 18, height: 18, color: 'white' }} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>{email.from}</span>
-                        <span style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>→</span>
-                        <span style={{ fontSize: 14, color: 'var(--sidebar-foreground)' }}>{email.to}</span>
+                        {email.to !== '-' && (
+                            <>
+                                <span style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>→</span>
+                                <span style={{ fontSize: 14, color: 'var(--sidebar-foreground)' }}>{email.to}</span>
+                            </>
+                        )}
                         {email.cc && <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>(CC: {email.cc})</span>}
                     </div>
                     <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{email.subject}</p>
@@ -149,9 +220,9 @@ function EmailItem({ email, isExpanded, onToggle }) {
                             <ArrowDownLeft style={{ width: 12, height: 12 }} /> Received
                         </div>
                     )}
-                    {isThirdParty && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: 'oklch(0.9 0.06 280)', color: 'oklch(0.45 0.15 280)', fontSize: 12, fontWeight: 600 }}>
-                            <Users style={{ width: 12, height: 12 }} /> 3rd Party
+                    {isSystem && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: 'var(--muted)', color: 'var(--muted-foreground)', fontSize: 12, fontWeight: 600 }}>
+                            <Zap style={{ width: 12, height: 12 }} /> System
                         </div>
                     )}
                     <ChevronDown style={{ width: 18, height: 18, color: 'var(--muted-foreground)', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />

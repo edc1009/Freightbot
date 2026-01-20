@@ -86,15 +86,14 @@ export const generateArrivalNoticePDF = (shipment) => {
     // --- CONTAINER TABLE ---
     const tableStartY = startY + 115;
 
-    const containerData = shipment.processed_shipments?.length > 0
-        ? shipment.processed_shipments.map(s => [
-            s.container_number || "TBD",
-            s.package_count || "1",
-            s.description || "CONSOLIDATED CARGO",
-            s.weight || "0 KGS",
-            s.volume || "0 CBM"
-        ])
-        : [[shipment.container || "N/M", "1 Unit", "Generaly Cargo", "0 KGS", "0 CBM"]];
+    // Use mapped attributes from the shipment object (flattened from extraction)
+    const containerData = [[
+        shipment.container || shipment.container_number || "TBD",
+        shipment.package_count || "1 Unit",
+        "CONSOLIDATED CARGO",
+        shipment.weight || "0 KGS",
+        shipment.volume || "0 CBM"
+    ]];
 
     autoTable(doc, {
         startY: tableStartY,
