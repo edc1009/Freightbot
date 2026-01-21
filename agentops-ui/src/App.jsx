@@ -141,9 +141,17 @@ export default function AgentOpsUI() {
                         const newShipment = {
                             id: processed.shipment_id || `sh-${Date.now()}`,
                             status: 'new',
-                            step: 1, // Pre-alert received
+                            step: 2, // Order Intake completed, now awaiting Carrier AN
                             reference: processed.reference,
-                            ...processed.extracted_data,
+                            playbook: processed.playbook || 'free-hand',
+                            ...(processed.extracted_data || {}),
+                            bl: processed.extracted_data?.bl_number || processed.extracted_data?.bl,
+                            hbl: processed.extracted_data?.hbl_number || processed.extracted_data?.hbl,
+                            container_number: processed.extracted_data?.container_number,
+                            // Explicitly map party fields to prevent loss
+                            notify_party: processed.extracted_data?.notify_party || null,
+                            consignee: processed.extracted_data?.consignee || null,
+                            shipper: processed.extracted_data?.shipper || null,
                             pendingActions: [],
                             emails: [],
                             created_at: new Date().toISOString()
@@ -163,7 +171,20 @@ export default function AgentOpsUI() {
                         if (existingIdx >= 0) {
                             updatedShipments[existingIdx] = {
                                 ...updatedShipments[existingIdx],
-                                ...processed.extracted_data
+                                ...(processed.extracted_data || {}),
+                                bl: processed.extracted_data?.bl_number || processed.extracted_data?.bl || updatedShipments[existingIdx].bl,
+                                hbl: processed.extracted_data?.hbl_number || processed.extracted_data?.hbl || updatedShipments[existingIdx].hbl,
+                                firmsCode: processed.extracted_data?.firms_code || processed.extracted_data?.firmsCode || updatedShipments[existingIdx].firmsCode,
+                                container_number: processed.extracted_data?.container_number || updatedShipments[existingIdx].container_number,
+                                // Auto-advance step when Carrier AN data is received
+                                // If we have AN data (firms_code or eta) and step is still 1 or 2, advance to step 3
+                                step: ((updatedShipments[existingIdx].step <= 2) && (processed.extracted_data?.firms_code || processed.extracted_data?.firmsCode || processed.extracted_data?.eta))
+                                    ? 3
+                                    : updatedShipments[existingIdx].step,
+                                // Also update status from 'new' to 'in-progress' when AN is received
+                                status: (updatedShipments[existingIdx].status === 'new' && (processed.extracted_data?.firms_code || processed.extracted_data?.firmsCode))
+                                    ? 'in-progress'
+                                    : updatedShipments[existingIdx].status
                             };
                             addActivityLog({
                                 type: 'shipment',
@@ -172,6 +193,14 @@ export default function AgentOpsUI() {
                                 detail: `Updated details from ${emailData.subject}`
                             });
                         }
+                    } else if (processed.action === 'ESCALATE') {
+                        // ESCALATE: Carrier AN received but no matching shipment found
+                        // Do NOT create new shipment, only log an alert
+                        addActivityLog({
+                            type: 'alert',
+                            message: `⚠️ ESCALATION: Carrier AN received but no matching shipment found`,
+                            detail: `Reference: ${processed.reference}. Manual review required. Email: ${emailData.subject}`
+                        });
                     }
                 });
 

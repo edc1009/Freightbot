@@ -59,6 +59,7 @@ export default function ShipmentDetailModal({
                 eta: shipment.eta,
                 hbl: shipment.hbl || '',
                 firmsCode: shipment.firmsCode || '',
+                container_number: shipment.container_number || '',
                 ref: shipment.reference || '',
                 // Party Information
                 shipper: shipment.shipper || '',
@@ -275,6 +276,7 @@ export default function ShipmentDetailModal({
                             { label: 'ETA', key: 'eta', value: shipment.eta },
                             { label: 'HBL', key: 'hbl', value: shipment.hbl || '-' },
                             { label: 'CY Location', key: 'firmsCode', value: shipment.firmsCode || '-' },
+                            { label: 'Cntr number', key: 'container_number', value: shipment.container_number || '-' },
                             { label: 'Reference', key: 'ref', value: shipment.reference || '-' },
                             { label: 'Weight', key: 'weight', value: shipment.weight || '-' },
                             { label: 'Volume', key: 'volume', value: shipment.volume || '-' },
@@ -663,8 +665,10 @@ export default function ShipmentDetailModal({
 
 function PendingActionsSection({ shipment, shipments, setShipments, setSelectedShipment, toggleISFFiled, onApprove }) {
     // Dynamic ISF Action Injection Logic
+    // CRITICAL: Only inject ISF Filing for import-fcl playbook, NOT for free-hand
     const displayActions = [...(shipment.pendingActions || [])];
-    if (shipment.step === 1 && !shipment.isfFiled && !displayActions.some(a => a.title?.includes('ISF'))) {
+    const needsISF = shipment.playbook === 'import-fcl' || shipment.playbook === 'import-lcl';
+    if (needsISF && shipment.step === 1 && !shipment.isfFiled && !displayActions.some(a => a.title?.includes('ISF'))) {
         displayActions.unshift({
             type: 'manual',
             title: 'Action Required: ISF Filing',

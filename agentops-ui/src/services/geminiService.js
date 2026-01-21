@@ -25,7 +25,12 @@ const RESPONSE_SCHEMA = {
                     reference: { type: "STRING", description: "B/L Number or Container Number found" },
                     match_result: { type: "STRING", enum: ["FOUND", "NOT_FOUND"] },
                     shipment_id: { type: "STRING", nullable: true, description: "ID of the matching shipment in database" },
-                    action: { type: "STRING", enum: ["CREATE", "UPDATE"], description: "Proposed action for this specific shipment" },
+                    action: { type: "STRING", enum: ["CREATE", "UPDATE", "ESCALATE"], description: "Proposed action. Use ESCALATE if Carrier AN but no matching shipment found." },
+                    playbook: {
+                        type: "STRING",
+                        enum: ["import-fcl", "import-lcl", "free-hand"],
+                        description: "DEFAULT='free-hand'. ONLY use 'import-fcl' if EMAIL BODY explicitly says 'Please file ISF' or 'ISF needed'. Seeing 'ISF' in a form field does NOT count."
+                    },
                     extracted_data: {
                         type: "OBJECT",
                         description: "Data specific to this shipment extracted from its page/section",
@@ -224,6 +229,33 @@ TASK:
 3. Extract Shipment Data (MBL, HBL, Container, Vessel, ETA).
 4. Cross-reference with "EXISTING SHIPMENTS" database.
 
+CRITICAL: MATCHING LOGIC (FUZZY MATCH)
+- **Hiearchy**: Match in this order:
+  1. **MBL** (Master Bill) - Primary Key.
+  2. **HBL** (House Bill) - Secondary Key.
+  3. **Container Number** - Strong Signal.
+- **Normalization**: When comparing, IGNORE spaces, dashes, dots, and case.
+  - Example: "NYKU-123 456" matches "NYKU123456".
+- **Logic**: If MBL is missing in the document, try to match by HBL or Container.
+
+CRITICAL: PLAYBOOK CLASSIFICATION (FREE-HAND IS DEFAULT)
+- **DEFAULT BEHAVIOR**: Always use playbook = "free-hand" unless you find EXPLICIT evidence otherwise.
+- **ONLY use import-fcl** if ALL of these conditions are met:
+  1. The EMAIL BODY (not attachments!) explicitly requests ISF filing.
+  2. The request uses action words like: "Please file ISF", "ISF needed", "Require ISF filing", "File ISF for this shipment".
+- **DO NOT classify as import-fcl** if you only see:
+  - "ISF" in a form field, table header, or checkbox
+  - "ISF: N/A", "ISF: TBD", "ISF filed by shipper"
+  - "ISF" anywhere in an attachment (PDF, image, etc.)
+  - Any other passive mention of ISF
+- **When in doubt, use "free-hand".** This is a SAFETY DEFAULT.
+
+CRITICAL: CARRIER AN RULE (NO CREATE)
+- **Constraint**: If document is "Arrival Notice" from a CARRIER:
+  - You must **NEVER** return action "CREATE".
+  - If a matching shipment (by MBL, HBL, or Container) is found -> Action: "UPDATE".
+  - If NO matching shipment is found -> Action: "ESCALATE" (Reason: "Carrier AN received but no matching shipment found in database").
+
 COMMUNICATION PROTOCOL (Rules of Engagement):
 - **Scenario 1: Received Pre-alert from Overseas Agent**
   - **Action**: You must draft a reply to the **Overseas Agent** (the Sender).
@@ -273,13 +305,15 @@ CRITICAL: NO REPETITION
 
 ONE-SHOT REASONING EXAMPLE (GOLD STANDARD):
 "Reviewing document 'AN.pdf'. Found MBL: EGLV123456, HBL: SH999.
+Matching: Found existing shipment SH999 in DB (Matched via HBL).
+Decision: Update existing shipment SH999.
 Checking Consignee: MBL lists 'Pioneer Global' (US). HBL lists 'Target Stores' (Customer).
 Decision: Ignore MBL Consignee. Use 'Target Stores' as Shipment Consignee.
 Checking Vessel: OCR reads 'OOCL BRUSSELS V.067E / VOY 067E'.
-Self-Correction: 'V.067E / VOY 067E' is repetitive. I will extract simplified format: 'OOCL BRUSSELS 067E'.
+Self-Correction: Extract simplified format: 'OOCL BRUSSELS 067E'.
 Checking Charges: Carrier AN lists $500 Ocean Freight.
-Decision: This is Cost. Set Authority to APPROVE.
-Final Action: Create Shipment SH999."
+Decision: This is Cost. Authority: APPROVE.
+Final Action: UPDATE SH999."
 
 OUTPUT:
 - Return ONLY valid JSON matching the schema.
@@ -325,7 +359,8 @@ export async function processEmailWithAgent(apiKey, emailData, existingShipments
         id: s.id,
         ref: s.reference,
         bl: s.bl,
-        container: s.container,
+        hbl: s.hbl,
+        container: s.container_number || s.container,
         status: s.status,
         customer: s.customer
     }));

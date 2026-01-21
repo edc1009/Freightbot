@@ -13,7 +13,12 @@ export default function ActionCenter({
     toggleISFFiled // Passed from App
 }) {
     // 1. Synthesize ISF Actions (Fix for missing action)
-    const needsISF = shipments.filter(s => s.step === 1 && !s.isfFiled);
+    // CRITICAL: Only show ISF for import-fcl or import-lcl playbooks, NOT free-hand
+    const needsISF = shipments.filter(s =>
+        (s.playbook === 'import-fcl' || s.playbook === 'import-lcl') &&
+        s.step === 1 &&
+        !s.isfFiled
+    );
     const synthesizedISFActions = needsISF.map(s => ({
         type: 'manual',
         action: 'isf_filing',

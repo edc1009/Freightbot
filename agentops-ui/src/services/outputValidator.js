@@ -50,7 +50,7 @@ export const AgentResponseSchema = z.object({
         reference: z.string().max(200),
         match_result: z.enum(["FOUND", "NOT_FOUND"]),
         shipment_id: z.string().nullable().optional(),
-        action: z.enum(["CREATE", "UPDATE"]),
+        action: z.enum(["CREATE", "UPDATE", "ESCALATE"]),
         extracted_data: z.object({
             origin: z.string().max(100).nullable().optional(),
             destination: z.string().max(100).nullable().optional(),

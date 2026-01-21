@@ -80,6 +80,12 @@ The Agent must act as an **experienced US Import Operator**. You are NOT just ex
 
 ### Classification Hints
 
+* **ISF Check (CRITICAL)**:
+  - **DEFAULT: FREEHAND (Part A)** — Use this unless proven otherwise.
+  - **ONLY classify as IMPORT FCL (Part B)** if the EMAIL BODY explicitly requests ISF filing:
+    - ✅ Triggers: "Please file ISF", "ISF needed", "Require ISF filing", "File ISF for this shipment"
+    - ❌ NOT triggers: "ISF: N/A", "ISF filed by shipper", seeing "ISF" in a form field, "ISF: TBD"
+  - **If unsure, default to FREEHAND.**
 * **NEW_FREEHAND_INTENT**: From `OVERSEAS_AGENT`. Contains "Pre-alert", "Nomination", or "Draft HBL".
 * **CARRIER_AN**: From `CARRIER`. Contains "Arrival Notice", "AN", "Discharge".
 * **FINANCIAL_INCOMING**: Customer/Agent sends an Invoice/Debit Note. **Action: Extract but set to APPROVE.**
