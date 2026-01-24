@@ -20,12 +20,11 @@ export const PLAYBOOKS = {
         conditions: { direction: 'import', containerType: 'FCL', delivery: 'door' },
         steps: [
             { name: 'ISF Filing', default: 'approve', manualTriggers: ['dispute', 'penalty', 'late'] },
-            { name: 'Await Arrival Notice', default: 'auto' },
-            { name: 'Arrival Notice', default: 'approve' },
+            { name: 'Await Carrier AN', default: 'auto' },
             { name: 'Truck Scheduling', default: 'approve', manualTriggers: ['surcharge', 'dispute'] },
             { name: 'Customs Coordination', default: 'auto', manualTriggers: ['hold', 'exam'] },
-            { name: 'Duty Confirmation', default: 'auto' },
             { name: 'Warehouse Coordination', default: 'approve', manualTriggers: ['exception'] },
+            { name: 'Shipment Delivery', default: 'auto' },
             { name: 'Billing & Collection', default: 'approve', manualTriggers: ['dispute', 'claim'] }
         ]
     },
@@ -61,7 +60,7 @@ export const PLAYBOOKS = {
 };
 
 // Step labels and icons
-export const stepLabels = ['ISF Filing', 'Await Arrival Notice', 'Arrival Notice', 'Trucker Coordination', 'Customs Coordination', 'Duty Confirmation', 'Warehouse Coordination', 'Billing & Collection'];
+export const stepLabels = ['ISF Filing', 'Await Carrier AN', 'Truck Scheduling', 'Customs Coordination', 'Warehouse Coordination', 'Shipment Delivery', 'Billing & Collection'];
 export const stepIcons = [FileText, Send, Truck, Building, DollarSign, Warehouse, FileText];
 
 // Design system CSS

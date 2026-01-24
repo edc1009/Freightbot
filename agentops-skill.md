@@ -187,43 +187,123 @@ This playbook defines the logic for **Import FCL (Nominated)** shipments.
 
 ## 3. The Playbook (SOP) - Import FCL
 
-### Step 1 — Booking Intake
+> **流程總覽**:
+> ```
+>               1. ISF Filing
+>                     │
+>             2. Await Carrier AN
+>                     │
+>          📋 Stakeholder Info Required
+>                     │
+>          ┌──────────┴──────────┐
+>          │                     │
+>   3. Truck Scheduling    4. Customs Coordination
+>          │ (平行)              │
+>          ▼                     │
+>   5. Warehouse Coord ◄─────────┘
+>          │
+>   6. Shipment Delivery (POD)
+>          │
+>   7. Billing & Collection
+> ```
+
+### Step 1 — ISF Filing (Approve)
 *   **Trigger**: Email from Overseas Agent (Subject: "New Booking...", "Nomination...").
 *   **Action**: `CREATE_SHIPMENT` (FMS).
 *   **Data Entry**:
     *   Shipper/Consignee from HBL.
     *   Vessel/Voyage from MBL/Booking.
 *   **Task**: `CHECK_ISF_STATUS` -> If needed, `MANUAL_FILE_ISF`.
+*   **Reminder**: Prompt OP to file ISF before vessel loading (24h rule).
 
-### Step 2 — Pre-Arrival (The A/N)
+### Step 2 — Await Carrier AN (Auto)
 *   **Trigger**: **Arrival Notice** received from Ocean Carrier (~1 week before ETA).
-*   **Action 1 (Finance)**: `PAY_CARRIER` (Advance MBL Charges).
-*   **Action 2 (Docs)**: `SEND_ARRIVAL_NOTICE` (Our HBL Version) to:
-    *   **Customer** (Notify of arrival).
-    *   **Customs Broker** (For clearance).
-*   **Action 3 (Docs)**: `REQUEST_DOCUMENTS` (Ask Customer for Posting List / Commercial Invoice if missing).
+*   **Action 1 (Finance)**: `PAY_CARRIER` (Advance MBL Charges) — Remind OP to pay.
+*   **Extract**: FIRMS Code, ETA, LFD, Charges.
+*   **Next Step Trigger**: Upon receiving Carrier AN.
 
-### Step 3 — Customs Clearance
-*   **Trigger**: Broker contact or Duty Invoice received.
-*   **Action**: `CONFIRM_DUTY` (Ask Customer to confirm Duty amount/payment authorization).
-*   **Process**:
-    *   Customer Approves -> `NOTIFY_BROKER` to File/Process.
-    *   **Wait for**: `CUSTOMS_RELEASE` (Form 7501 / Release status).
+#### 📋 Stakeholder Info Required
+*   **Timing**: Immediately after receiving Carrier AN.
+*   **Action**: Prompt user to fill in Stakeholder information:
+    *   Consignee (收貨人)
+    *   Shipper (發貨人)
+    *   Notify Party (通知方)
+    *   Customs Broker (報關行)
+    *   Trucker (卡車公司)
+    *   Warehouse (倉庫)
 
-### Step 4 — Release & Trucking
-*   **Trigger**: Customs Released + Freight Paid + **OBL/Telex Verified**.
-*   **Action 1**: `ISSUE_INTERNAL_DO` (Send to Trucker).
-    *   Include: Pickup #, Location, **LFD Info**.
-*   **Action 2**: `COORDINATE_DELIVERY`.
-    *   Trucker sets Appointment with Terminal.
-    *   Trucker provides "Drop-off Time".
-    *   **We** confirmation Warehouse Availability.
-    *   **We** confirm back to Trucker.
+---
 
-### Step 5 — Delivery & Closing
-*   **Trigger**: **POD** (Proof of Delivery) received from Trucker.
+> **Step 3 & 4 run in PARALLEL after Stakeholder Info is filled.**
+
+### Step 3 — Truck Scheduling (Approve)
+*   **Trigger**: Stakeholder Info filled + Carrier AN received.
+*   **Action**: `ISSUE_PICKUP_INSTRUCTION` (Send to Trucker).
+    *   Include: Pickup #, Location (FIRMS Code), **LFD Info**.
+*   **Auto-Send**: P/U Instruction can be auto-sent to Trucker.
+*   **Escalation**: If Trucker replies with issues → Escalate to OP.
+
+### Step 4 — Customs Coordination (Sub-Workflow)
+*   **Trigger**: Stakeholder Info filled + Carrier AN received.
+*   **Runs in parallel with Step 3.**
+
+#### 4.1 Collect Documents from Customer
+*   **Required Documents**:
+    *   Commercial Invoice
+    *   Packing / Weight List
+    *   TLX B/L
+    *   Product Images
+*   **Auto-Action**: If documents not received → Auto Follow-up after 24hr.
+
+#### 4.2 Send to Customs Broker
+*   **Trigger**: All documents received.
+*   **Action**: Auto-compile and forward to Customs Broker:
+    *   Commercial Invoice (from Customer)
+    *   Packing / Weight List (from Customer)
+    *   TLX B/L (from Customer)
+    *   Our Arrival Notice (generated at this step)
+    *   Product Images (from Customer)
+*   **Escalation Rules**:
+    *   Broker requests more info → Agent auto-forwards to Customer.
+    *   Customer has concerns → Escalate to OP.
+
+#### 4.3 Receive 7501 (Customs Duty)
+*   **Trigger**: Broker confirms OK and provides Form 7501 (Duty amount).
+*   **Action**: Agent drafts email (attach 7501) to Customer for confirmation.
+*   **Type**: `APPROVE` — OP must review before sending.
+
+#### 4.4 Customer Confirmation
+*   **Trigger**: OP approves → Email sent to Customer.
+*   **Wait for**: Customer confirmation of Duty.
+*   **Auto-Action**:
+    *   24hr no reply → Auto Follow-up.
+    *   48hr no reply → Mark as "Needs Attention".
+*   **Completion**: Customer confirms → Customs Coordination Complete.
+
+---
+
+### Step 5 — Warehouse Coordination (Approve)
+*   **Trigger**: Trucker provides delivery time (from Step 3).
+*   **Dependency**: Step 3 must provide delivery schedule first.
+*   **Action**: `COORDINATE_WAREHOUSE`.
+    *   Inform Warehouse of delivery time.
+    *   Wait for Warehouse confirmation.
+*   **Output**: Confirm back to Trucker.
+
+### Step 6 — Shipment Delivery (Auto)
+*   **Trigger**: Trucker delivers cargo.
+*   **Action**: Wait for Trucker to send **POD** (Proof of Delivery).
+*   **Upon POD Received**:
+    *   Agent auto-requests Trucker Invoice.
+    *   Mark step as complete.
+*   **Completion**: POD received + Trucker Invoice received.
+
+### Step 7 — Billing & Collection (Approve)
+*   **Trigger**: Step 6 completed (POD + Trucker Invoice received).
 *   **Action**: `GENERATE_FINAL_INVOICE`.
+*   **Reminder**: Prompt OP to send Final Invoice to Customer.
 *   **Output**: Email to Customer containing:
     *   Final Invoice.
     *   Copy of HBL / Arrival Notice.
     *   POD.
+*   **Completion**: Customer payment received.

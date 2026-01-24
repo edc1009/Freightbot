@@ -85,18 +85,12 @@ export default function ActionCenter({
                             onEdit={() => setEditingAction(editingAction === item.uniqueId ? null : item.uniqueId)}
                             onCloseEdit={() => setEditingAction(null)}
                             onApprove={() => {
-                                const updated = shipments.map(s => {
-                                    if (s.id === item.shipment.id) {
-                                        return {
-                                            ...s,
-                                            pendingActions: s.pendingActions.filter(a => a.action !== item.action),
-                                            step: Math.min(s.step + 1, 5),
-                                            status: 'in-progress'
-                                        };
-                                    }
-                                    return s;
-                                });
-                                setShipments(updated);
+                                // Find the action index in the shipment's pendingActions
+                                const actionIndex = item.shipment.pendingActions.findIndex(
+                                    a => a.action === item.action && a.type === item.type
+                                );
+                                // Use the onApprove handler from App.jsx which has proper handling
+                                onApprove(item.shipment.id, actionIndex);
                                 setEditingAction(null);
                             }}
                         />
@@ -131,17 +125,12 @@ export default function ActionCenter({
                             key={idx}
                             item={item}
                             onComplete={() => {
-                                const updated = shipments.map(s => {
-                                    if (s.id === item.shipment.id) {
-                                        return {
-                                            ...s,
-                                            status: 'completed',
-                                            pendingActions: s.pendingActions.filter(a => a.action !== item.action)
-                                        };
-                                    }
-                                    return s;
-                                });
-                                setShipments(updated);
+                                // Find the action index in the shipment's pendingActions
+                                const actionIndex = item.shipment.pendingActions.findIndex(
+                                    a => a.action === item.action && a.type === item.type
+                                );
+                                // Use the onApprove handler from App.jsx which has proper handling for freight_release
+                                onApprove(item.shipment.id, actionIndex);
                             }}
                             onViewDetails={() => setSelectedShipment(item.shipment)}
                         />
@@ -211,7 +200,7 @@ function ApprovalCard({ item, isEditing, onEdit, onCloseEdit, onApprove }) {
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>•</span>
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>{item.shipment.customer}</span>
                         <span style={{ padding: '2px 8px', background: 'var(--chart-4)', color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {item.action === 'send_email' ? '📧 Send Email' : item.action === 'confirm_time' ? '🕐 Confirm Time' : item.action === 'approve_payment' ? '💰 Payment' : 'Approve'}
+                            {item.action === 'send_email' ? '📧 Send Email' : item.action === 'confirm_time' ? '🕐 Confirm Time' : item.action === 'confirm_payment' ? '💰 Confirm Payment' : item.action === 'approve_payment' ? '💰 Payment' : 'Approve'}
                         </span>
                     </div>
                     <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{item.title}</p>
@@ -433,12 +422,12 @@ function WaitingCard({ item, onViewDetails }) {
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>•</span>
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>{item.shipment.customer}</span>
                         <span style={{ padding: '2px 8px', background: 'oklch(0.6 0.15 250)', color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {item.key === 'trucker_coordination' ? '🚛 Trucker' : item.key === 'customs_coordination' ? '🛃 Customs' : item.key === 'warehouse_coordination' ? '🏭 Warehouse' : 'Waiting'}
+                            {item.key === 'truck_scheduling' ? '🚛 Trucker' : item.key === 'customs_coordination' ? '🛃 Customs' : item.key === 'warehouse_coordination' ? '🏭 Warehouse' : 'Waiting'}
                         </span>
                     </div>
                     <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 4px 0' }}>Waiting for Reply</p>
                     <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: '0 0 8px 0' }}>
-                        Email sent to {item.key === 'trucker_coordination' ? 'Trucker' : item.key === 'customs_coordination' ? 'Customs Broker' : 'Warehouse'}. Waiting for confirmation.
+                        Email sent to {item.key === 'truck_scheduling' ? 'Trucker' : item.key === 'customs_coordination' ? 'Customs Broker' : 'Warehouse'}. Waiting for confirmation.
                     </p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
                         <span style={{ color: 'var(--muted-foreground)' }}>⏳ Sent on {item.sentAt ? item.sentAt.split(' ')[0] : 'today'}</span>

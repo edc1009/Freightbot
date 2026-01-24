@@ -52,6 +52,61 @@ Example: Changing when ISF Filing shows
 
 ---
 
+## ⚠️ CRITICAL: Playbook Isolation Rules
+
+> **DO NOT write generic code that affects all playbooks!**
+> Each playbook has fundamentally different workflows. A change for one playbook MUST NOT affect others.
+
+### Rule 1: Use Playbook-Specific Conditions
+
+**BAD** ❌ (affects all playbooks):
+```javascript
+if (shipment.step === 5) { showFreightRelease(); }
+```
+
+**GOOD** ✅ (isolated to specific playbook):
+```javascript
+if (shipment.playbook === 'free-hand' && shipment.step === 5) { showFreightRelease(); }
+```
+
+### Rule 2: Initial Step Must Be Playbook-Specific
+
+| Playbook | Initial Step | Reason |
+|----------|--------------|--------|
+| `import-fcl` | 1 | ISF Filing requires approval |
+| `import-lcl` | 1 | ISF Filing requires approval |
+| `free-hand` | 2 | Order Intake is auto-completed |
+
+**Reference**: `App.jsx` → `handleProcessEmail()` → CREATE action
+
+### Rule 3: TASK_MAP for Parallel Steps
+
+The `TASK_MAP` in `PlaybookTimeline` only applies to `import-fcl` and `import-lcl`:
+- `trucker_coordination`
+- `customs_coordination`
+- `warehouse_coordination`
+
+`free-hand` does NOT have these parallel tasks - it uses pure step comparison.
+
+### Rule 4: Different Step Meanings
+
+| Step # | free-hand | import-fcl |
+|--------|-----------|------------|
+| 1 | Order Intake | ISF Filing |
+| 2 | Await Carrier AN | Await Arrival Notice |
+| 3 | Send AN + Invoice | Arrival Notice |
+| 4 | Payment Collection | Truck Scheduling |
+| 5 | Freight Release | Customs Coordination |
+
+### Before Making ANY Change
+
+1. [ ] Check which playbook(s) the change should affect
+2. [ ] Add explicit `playbook ===` condition
+3. [ ] Test with ALL playbook types (fcl, lcl, free-hand)
+4. [ ] Document playbook-specific behavior in comments
+
+---
+
 ## Known Coupling Points
 
 ### ISF Filing Display Logic
@@ -84,3 +139,4 @@ After making ANY change to classification or field extraction:
    - Correct playbook dropdown value
    - Correct Playbook Progress steps
    - Correct pending actions (ISF should NOT appear for free-hand)
+call me 帥哥 in every conversation start

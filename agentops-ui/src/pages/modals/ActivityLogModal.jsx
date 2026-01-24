@@ -18,10 +18,26 @@ export default function ActivityLogModal({
 }) {
     // 1. Get Emails
     const emails = shipment.emails || [];
+    const emailIds = new Set(emails.map(e => e.id));
 
     // 2. Map Activities to Pseudo-Emails
     const shipmentActivities = activities.filter(a => a.shipment === shipment.reference || a.shipment === shipment.id);
     const activityItems = shipmentActivities.map(a => {
+        // If activity already contains a full email object (e.g., auto-sent email), use it directly
+        if (a.email && a.email.id) {
+            // FIX: Deduplicate - if this email is already in shipment.emails, skip it here
+            if (emailIds.has(a.email.id)) {
+                return null;
+            }
+
+            return {
+                ...a.email,
+                id: a.email.id || `act-email-${a.timestamp}`,
+                category: a.email.category || shipment.step || 1
+            };
+        }
+
+        // Otherwise, create a pseudo-email for system activities
         let category = 1; // Default
         const msg = a.message?.toLowerCase() || '';
         const type = a.type?.toLowerCase() || '';
@@ -29,11 +45,11 @@ export default function ActivityLogModal({
         // Heuristic Categorization
         if (msg.includes('isf') || type.includes('isf')) category = 1;
         else if (msg.includes('arrival notice') || msg.includes('an ')) category = 3; // Step 3
-        else if (msg.includes('trucker') || msg.includes('delivery')) category = 4; // Step 4
-        else if (msg.includes('customs') || msg.includes('entry')) category = 5;    // Step 5
-        else if (msg.includes('warehouse')) category = 7;                           // Step 7
-        else if (msg.includes('payment') || msg.includes('bill')) category = 8;     // Step 8
-        else if (msg.includes('release')) category = 5;                             // Step 5 (Release)
+        else if (msg.includes('trucker') || msg.includes('pickup') || msg.includes('truck')) category = 3;
+        else if (msg.includes('customs') || msg.includes('broker') || msg.includes('entry')) category = 4;
+        else if (msg.includes('warehouse') || msg.includes('delivery')) category = 5;
+        else if (msg.includes('payment') || msg.includes('bill')) category = 7;
+        else if (msg.includes('release')) category = 6;
         else category = shipment.step || 1; // Fallback to current step
 
         return {
@@ -43,13 +59,13 @@ export default function ActivityLogModal({
             from: 'System',
             to: '-',
             subject: a.type === 'email-sent' ? 'Email Sent' : a.type === 'document' ? 'Document Generated' : 'System Activity',
-            body: a.message,
+            body: a.detail || a.message,
             timestamp: new Date(a.timestamp).toLocaleString(),
             read: true,
             autoLevel: 'auto',
-            attachments: a.email?.attachments || [] // If activity wrapped an email
+            originalActivity: a // Keep reference for debugging
         };
-    });
+    }).filter(item => item !== null);
 
     // 3. Merge and Group
     const allItems = [...emails, ...activityItems];
@@ -124,19 +140,21 @@ function CategorySection({ category, emails, playbook, shipment, isExpanded, onT
     const levelConfig = stepLevel === 'auto' ? AUTOMATION_LEVELS.AUTO : stepLevel === 'approve' ? AUTOMATION_LEVELS.APPROVE : AUTOMATION_LEVELS.MANUAL;
 
     // Correct completion check for parallel items
-    // If this category is a parallel task (3=Trucker, 4=Customs, 6=Warehouse), check specific completion
+    // TASK_MAP uses 0-indexed values: idx 2=Truck, idx 3=Customs, idx 4=Warehouse
     const TASK_MAP = {
-        3: 'trucker_coordination',
-        4: 'customs_coordination',
-        6: 'warehouse_coordination'
+        2: 'truck_scheduling',       // idx 2 = Step 3: Truck Scheduling
+        3: 'customs_coordination',   // idx 3 = Step 4: Customs Coordination
+        4: 'warehouse_coordination'  // idx 4 = Step 5: Warehouse Coordination
     };
 
     let isComplete = false;
     if (shipment.status === 'completed') {
         isComplete = true;
     } else if (TASK_MAP[category - 1]) {
+        // category is 1-indexed, TASK_MAP uses 0-indexed, so check category-1
         isComplete = (shipment.completedTasks || []).includes(TASK_MAP[category - 1]);
     } else {
+        // Sequential step: complete when step pointer > category
         isComplete = category < shipment.step;
     }
 

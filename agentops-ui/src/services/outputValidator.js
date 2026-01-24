@@ -34,13 +34,14 @@ export const AgentResponseSchema = z.object({
     email_analysis: z.object({
         type: z.enum([
             "NEW_FREEHAND_INTENT", "CARRIER_AN", "STATUS_UPDATE",
-            "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "INQUIRY",
-            "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"
+            "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "TRUCKER_CONFIRM",
+            "CUSTOMS_CONFIRM", "WAREHOUSE_CONFIRM", "DOCUMENT_SUBMISSION",
+            "INQUIRY", "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"
         ]),
         sender: z.object({
             email: z.string(),
             name: z.string().nullable().optional(),
-            party_type: z.enum(["OVERSEAS_AGENT", "CUSTOMER", "CARRIER", "INTERNAL", "UNKNOWN"])
+            party_type: z.enum(["OVERSEAS_AGENT", "CUSTOMER", "CARRIER", "TRUCKER", "CUSTOMS_BROKER", "WAREHOUSE", "INTERNAL", "UNKNOWN"])
         }),
         confidence: z.number().optional(),
         summary: z.string().optional()
