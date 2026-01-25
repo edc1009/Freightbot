@@ -175,6 +175,7 @@ export default function AgentOpsUI() {
                         return newShipment;
                     }
 
+
                     // Default handling
                     addActivityLog({
                         type: 'action',
@@ -573,7 +574,7 @@ Pioneer Global Logistics`,
                             const dutyAmount = agentDuty || (bodyDutyMatch ? bodyDutyMatch[1] : 'See attached 7501');
 
                             if (customerEmail) {
-                                // Create APPROVE draft email to Customer
+                                // Create AUTO-SEND email to Customer (per workflow: auto-forward 7501 for customer confirmation)
                                 const customerDutyEmail = {
                                     id: `e-${Date.now()}-duty-confirm`,
                                     category: 4, // Step 4: Customs Coordination

@@ -291,10 +291,11 @@ COMMUNICATION PROTOCOL (Rules of Engagement):
 - **Scenario 4: Customs Broker Confirmation (CUSTOMS_CONFIRM)**
   - **Trigger**: Email from Customs Broker with 7501 or duty information.
   - **Keywords (any language)**: 
-    - English: "7501", "duty", "customs entry", "entry summary", "clearance", "released", "duty amount"
-    - Chinese: "關稅", "7501表", "已報關", "放行"
+    - English: "7501", "duty", "customs entry", "entry summary", "clearance", "released", "duty amount", "check attached"
+    - Chinese: "關稅", "7501表", "已報關", "放行", "稅金"
   - **Examples of CUSTOMS_CONFIRM**:
     - "Attached is the 7501, duty amount is $1,234.56" → CUSTOMS_CONFIRM
+    - "Please check attached 7501 and confirmed with us." → CUSTOMS_CONFIRM
     - "Customs entry filed, duty $500" → CUSTOMS_CONFIRM
     - "Shipment has been released" → CUSTOMS_CONFIRM
   - **Intent**: Broker provides Form 7501 (duty amount) or confirms clearance is complete.

@@ -120,10 +120,7 @@ description: Import FCL (Full Container Load) 完整工作流程
        ▼ Broker 確認 OK + 給 7501 (Customs Duty)
 [7501 Received]
        │
-       ▼ Agent 草擬 Email（附 7501）給客人確認
-[Awaiting OP Review] ─────► OP 點 Approve 或修改後 Approve
-       │
-       ▼ 發送給客人
+       ▼ Agent 自動發送 Email（附 7501）給客人確認
 [Awaiting Customer Confirm]
        │
        │────► 24hr 未回 → Auto Follow-up
