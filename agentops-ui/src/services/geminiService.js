@@ -64,8 +64,8 @@ const RESPONSE_SCHEMA = {
             properties: {
                 type: {
                     type: "STRING",
-                    enum: ["NEW_FREEHAND_INTENT", "CARRIER_AN", "STATUS_UPDATE", "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "TRUCKER_CONFIRM", "CUSTOMS_CONFIRM", "WAREHOUSE_CONFIRM", "DOCUMENT_SUBMISSION", "INQUIRY", "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"],
-                    description: "NEW types: TRUCKER_CONFIRM=Trucker confirms pickup schedule, CUSTOMS_CONFIRM=Broker confirms clearance, WAREHOUSE_CONFIRM=Warehouse confirms delivery, DOCUMENT_SUBMISSION=Customer sends CI/PL/BL"
+                    enum: ["NEW_FREEHAND_INTENT", "CARRIER_AN", "STATUS_UPDATE", "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "TRUCKER_CONFIRM", "CUSTOMS_CONFIRM", "CUSTOMS_CONFIRM_RESPONSE", "WAREHOUSE_CONFIRM", "DOCUMENT_SUBMISSION", "INQUIRY", "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"],
+                    description: "NEW types: TRUCKER_CONFIRM=Trucker confirms pickup schedule, CUSTOMS_CONFIRM=Broker confirms clearance, CUSTOMS_CONFIRM_RESPONSE=Customer approves 7501 duty"
                 },
                 sender: {
                     type: "OBJECT",
@@ -301,6 +301,15 @@ COMMUNICATION PROTOCOL (Rules of Engagement):
   - **Intent**: Broker provides Form 7501 (duty amount) or confirms clearance is complete.
   - **CRITICAL**: If sender party_type is CUSTOMS_BROKER and email mentions "7501" or "duty", classify as CUSTOMS_CONFIRM.
   - **Classification**: email_analysis.type = "CUSTOMS_CONFIRM", sender.party_type = "CUSTOMS_BROKER"
+
+- **Scenario 4.5: Customer 7501 Confirmation (CUSTOMS_CONFIRM_RESPONSE)**
+  - **Trigger**: Email from Consignee/Customer replying to our 7501 Duty Confirmation request.
+  - **Keywords (any language)**:
+    - English: "Confirm", "Proceed", "Go ahead", "Approved", "OK", "Please pay"
+    - Chinese: "確認", "沒問題", "好的", "請支付", "批准", "OK", "收到"
+    - Context: Referencing "7501", "Duty", "Tax", or replying to a subject like "Customs Duty Confirmation".
+  - **Intent**: The Customer agrees to the duty amount and authorizes us to proceed.
+  - **Classification**: email_analysis.type = "CUSTOMS_CONFIRM_RESPONSE", sender.party_type = "CUSTOMER"
 
 - **Scenario 5: Warehouse Confirmation (WAREHOUSE_CONFIRM)**
   - **Trigger**: Email from Warehouse/Consignee confirming delivery received.

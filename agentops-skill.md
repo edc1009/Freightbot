@@ -269,8 +269,8 @@ This playbook defines the logic for **Import FCL (Nominated)** shipments.
 
 #### 4.3 Receive 7501 (Customs Duty)
 *   **Trigger**: Broker confirms OK and provides Form 7501 (Duty amount).
-*   **Action**: Agent drafts email (attach 7501) to Customer for confirmation.
-*   **Type**: `APPROVE` — OP must review before sending.
+*   **Action**: Agent drafts and **AUTO-SENDS** email (attach 7501) to Customer for confirmation.
+*   **Type**: `AUTO` — Sent immediately upon receipt.
 
 #### 4.4 Customer Confirmation
 *   **Trigger**: OP approves → Email sent to Customer.

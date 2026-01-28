@@ -19,7 +19,13 @@ const EMAIL_TYPE_TO_CATEGORY = {
     'WAREHOUSE_CONFIRM': 5,      // Warehouse Coordination
     'STATUS_UPDATE': 6,          // Shipment Delivery
     'PAYMENT_CONFIRM': 7,        // Billing & Collection
+    'PAYMENT_CONFIRM': 7,        // Billing & Collection
+    'PAYMENT_CONFIRM': 7,        // Billing & Collection
     'PAYMENT_FOLLOWUP': 7,       // Billing & Collection
+    'CUSTOMS_CONFIRM_RESPONSE': 4, // Explicit mapping for our new internal type
+    // Fallbacks for other types to avoid getting stuck in wrong step
+    'INQUIRY': null,             // Use current step
+    'UNKNOWN': null              // Use current step
 };
 
 // Import components
@@ -289,11 +295,30 @@ export default function AgentOpsUI() {
                             const newPayments = extractedFinancials.payments || [];
 
                             // Extract email type from Agent's response for category assignment
-                            const detectedEmailType = processed.email_analysis?.type || result.email_analysis?.type;
+                            let detectedEmailType = processed.email_analysis?.type || result.email_analysis?.type;
+                            console.log(`🔍 Processing Update for ${existing.reference}: Detected Type=${detectedEmailType}`);
+
+                            // HEURISTIC OVERRIDE: 7501 Customer Confirmation
+                            // If email body mentions "7501" AND "confirm" or "proceed", and it's NOT a broker sending the 7501 itself.
+                            const bodyLower = (emailData.body || '').toLowerCase();
+                            const subjectLower = (emailData.subject || '').toLowerCase();
+                            const isConfirmation = (bodyLower.includes('confirm') || bodyLower.includes('proceed') || bodyLower.includes('ok')) &&
+                                (bodyLower.includes('7501') || subjectLower.includes('7501') || previousStep === 4);
+
+                            // If it's a confirmation but the Agent called it 'STATUS_UPDATE' or 'SHIPMENT_DELIVERY' (Step 6), force it back to Step 4 logic
+                            if (isConfirmation && (detectedEmailType === 'STATUS_UPDATE' || detectedEmailType === 'SHIPMENT_DELIVERY' || !detectedEmailType)) {
+                                console.log('⚠️ Heuristic Override: Detected 7501 Customer Confirmation');
+                                detectedEmailType = 'CUSTOMS_CONFIRM_RESPONSE'; // Internal type for handling
+                            }
 
                             // Create email record for Activity Log
                             // Use EMAIL_TYPE_TO_CATEGORY for correct category based on Agent-detected type
-                            const emailCategory = EMAIL_TYPE_TO_CATEGORY[detectedEmailType] || previousStep;
+                            // CRITICAL: If type is explicitly mapped, force that category (overriding current step)
+                            let emailCategory = EMAIL_TYPE_TO_CATEGORY[detectedEmailType];
+                            if (emailCategory === undefined || emailCategory === null) {
+                                emailCategory = previousStep; // Fallback to current step only if no explicit mapping
+                            }
+
                             const incomingEmail = {
                                 id: `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                                 category: emailCategory, // Based on email type, not shipment step
@@ -462,7 +487,18 @@ export default function AgentOpsUI() {
 
                     // CONFIRMATION HANDLING: Use Agent's email_analysis.type (supports any language)
                     // This is more reliable than keyword matching
-                    const emailType = processed.email_analysis?.type || result.email_analysis?.type;
+                    let emailType = processed.email_analysis?.type || result.email_analysis?.type;
+
+                    // RE-APPLY HEURISTIC OVERRIDE for this scope
+                    // If email body mentions "7501" AND "confirm" or "proceed", and it's NOT a broker sending the 7501 itself.
+                    const bodyLower = (emailData.body || '').toLowerCase();
+                    const subjectLower = (emailData.subject || '').toLowerCase();
+                    const isConfirmation = (bodyLower.includes('confirm') || bodyLower.includes('proceed') || bodyLower.includes('ok')) &&
+                        (bodyLower.includes('7501') || subjectLower.includes('7501'));
+
+                    if (isConfirmation && (emailType === 'STATUS_UPDATE' || emailType === 'SHIPMENT_DELIVERY' || !emailType)) {
+                        emailType = 'CUSTOMS_CONFIRM_RESPONSE';
+                    }
 
                     // Find shipment that matches this email
                     const targetShipmentIdx = updatedShipments.findIndex(s =>
@@ -527,7 +563,9 @@ Pioneer Global Logistics`,
                                 waitingTasks: warehouseEmail
                                     ? [...(shipment.waitingTasks || []).filter(w => w.key !== 'warehouse_coordination'),
                                     { key: 'warehouse_coordination', sentAt: new Date().toISOString() }]
-                                    : (shipment.waitingTasks || [])
+                                    : (shipment.waitingTasks || []),
+                                // Auto-Advance to Step 4 (Customs)
+                                step: 4
                             };
                             addActivityLog({
                                 type: 'auto-confirm',
@@ -551,7 +589,7 @@ Pioneer Global Logistics`,
                         // CUSTOMS_CONFIRM (7501 Received): Per SOP Step 4.3
                         // When Broker sends 7501, Agent should:
                         // 1. Draft email (attach 7501) to CUSTOMER for confirmation
-                        // 2. Type: APPROVE - OP must review before sending
+                        // 2. Type: AUTO - Sent immediately to customer
                         // 3. Only mark customs_coordination as complete AFTER customer confirms
                         if (emailType === 'CUSTOMS_CONFIRM') {
                             // Extract 7501 attachment if present
@@ -640,20 +678,81 @@ Pioneer Global Logistics`,
                                     detail: `Please add Consignee/Customer email to stakeholders, then manually forward 7501 for confirmation.`
                                 });
                             }
+
+                            // Explicit feedback for Auto-Send (User Request)
+                            console.log('✅ 7501 Auto-Send workflow executed.');
+                            // Optional: Show a toast or non-blocking alert if needed, but console log confirms execution logic.
                         }
 
                         // WAREHOUSE_CONFIRM: Mark warehouse_coordination as complete
                         if (emailType === 'WAREHOUSE_CONFIRM' && !completedTasks.includes('warehouse_coordination')) {
                             updatedShipments[targetShipmentIdx] = {
                                 ...updatedShipments[targetShipmentIdx],
-                                completedTasks: [...(updatedShipments[targetShipmentIdx].completedTasks || []), 'warehouse_coordination']
+                                completedTasks: [...(updatedShipments[targetShipmentIdx].completedTasks || []), 'warehouse_coordination'],
+                                // Auto-Advance to Step 6 (Delivery)
+                                step: 6
                             };
                             addActivityLog({
                                 type: 'auto-confirm',
                                 shipment: shipment.reference,
                                 message: `✅ Warehouse Delivery Confirmed by Agent`,
-                                detail: `Warehouse Coordination marked as complete.`
+                                detail: `Warehouse Coordination marked as complete. Advanced to Shipment Delivery.`
                             });
+                        }
+
+                        // CUSTOMS_CONFIRM_RESPONSE: Customer confirmed 7501
+                        // Action: Mark customs_coordination as COMPLETE
+                        if (emailType === 'CUSTOMS_CONFIRM_RESPONSE') {
+                            const currentTasks = updatedShipments[targetShipmentIdx].completedTasks || [];
+                            // Only mark if not already marked
+                            if (!currentTasks.includes('customs_coordination')) {
+                                updatedShipments[targetShipmentIdx] = {
+                                    ...updatedShipments[targetShipmentIdx],
+                                    completedTasks: [...currentTasks, 'customs_coordination'],
+                                    // Remove the waiting task
+                                    waitingTasks: (updatedShipments[targetShipmentIdx].waitingTasks || []).filter(w => w.key !== 'customs_duty_confirm'),
+                                    // Auto-Advance to Step 5 (Warehouse/Freight Release)
+                                    step: 5
+                                };
+                                addActivityLog({
+                                    type: 'auto-confirm',
+                                    shipment: shipment.reference,
+                                    message: `✅ Customer Confirmed 7501 Duty`,
+                                    detail: `Customs Coordination marked as complete. Advanced to Freight Release.`
+                                });
+                            }
+                        }
+
+                        // POD / DELIVERY CONFIRMATION
+                        // Logic: If email is STATUS_UPDATE or TRUCKER_CONFIRM (fallback)
+                        // AND (contains "POD" or "proof of delivery" or attachment has "POD")
+                        const bodyLower = (emailData.body || '').toLowerCase();
+                        const subjectLower = (emailData.subject || '').toLowerCase();
+                        const hasPODKeyword = bodyLower.includes('pod') || bodyLower.includes('proof of delivery') || subjectLower.includes('pod');
+                        const hasDeliveryKeyword = bodyLower.includes('delivered') || bodyLower.includes('delivery complete');
+                        const hasPODAttachment = (emailData.attachments || []).some(a => a.name.toLowerCase().includes('pod') || a.name.toLowerCase().includes('proof'));
+
+                        // Enhanced POD trigger condition
+                        if ((emailType === 'STATUS_UPDATE' || emailType === 'TRUCKER_CONFIRM' || hasPODKeyword) &&
+                            (hasPODKeyword || hasDeliveryKeyword || hasPODAttachment)) {
+
+                            const currentTasks = updatedShipments[targetShipmentIdx].completedTasks || [];
+
+                            // Only act if not already marked complete
+                            if (!currentTasks.includes('shipment_delivery')) {
+                                updatedShipments[targetShipmentIdx] = {
+                                    ...updatedShipments[targetShipmentIdx],
+                                    completedTasks: [...currentTasks, 'shipment_delivery'],
+                                    // Auto-Advance to Step 7 (Billing & Collection)
+                                    step: 7
+                                };
+                                addActivityLog({
+                                    type: 'auto-confirm',
+                                    shipment: shipment.reference,
+                                    message: `✅ Proof of Delivery (POD) Received`,
+                                    detail: `Shipment Delivery marked as complete. Advanced to Billing.`
+                                });
+                            }
                         }
 
                         // DOCUMENT_SUBMISSION: Auto-forward documents to Customs Broker
@@ -743,6 +842,15 @@ Pioneer Global Logistics`,
                 });
 
                 setShipments([...newShipments, ...updatedShipments]);
+
+                // FIX: If selectedShipment was updated, update the state too so the Modal reflects changes
+                if (selectedShipment) {
+                    const match = updatedShipments.find(s => s.id === selectedShipment.id) ||
+                        newShipments.find(s => s.id === selectedShipment.id);
+                    if (match) {
+                        setSelectedShipment(match);
+                    }
+                }
             }
 
             // 2. Add Email to Activity/Messages (Mock logic as we don't have full email structure)

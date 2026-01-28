@@ -120,7 +120,7 @@ description: Import FCL (Full Container Load) 完整工作流程
        ▼ Broker 確認 OK + 給 7501 (Customs Duty)
 [7501 Received]
        │
-       ▼ Agent 自動發送 Email（附 7501）給客人確認
+       ▼ Agent 自動發送 Email（附 7501）給客人確認 (Auto)
 [Awaiting Customer Confirm]
        │
        │────► 24hr 未回 → Auto Follow-up
@@ -140,7 +140,7 @@ description: Import FCL (Full Container Load) 完整工作流程
 |-----------|---------|---------------|---------|
 | Trucker P/U Instr | ✅ Auto 發送 | 不需要 | 司機回覆有問題 → 升級 |
 | Broker 轉發文件 | ✅ Auto 轉發 | 不需要 | Broker 回覆有問題 → 升級 |
-| Duty 確認（給客人） | ⚠️ 需 Review | 確認金額後點 Approve | - |
+| Duty 確認（給客人） | ✅ Auto 發送 | 不需要 | - |
 | Final Invoice | 📋 提醒 OP | 提醒 OP 記得自己發 | - |
 
 ### Agent 判斷邏輯
@@ -150,7 +150,7 @@ description: Import FCL (Full Container Load) 完整工作流程
 | Broker 要更多資料 | Auto 轉給客人要 | 客人有疑慮 → 升級 |
 | Broker 回覆有問題 | 升級給 OP | - |
 | 客人文件不齊 | 24hr 後 Auto Follow-up | - |
-| 客人確認 Duty | 等 OP Review 後發送 | - |
+| 客人確認 Duty | 等待客人回覆 | - |
 | Trucker 給 POD | Auto 跟 Trucker 要 Invoice | - |
 
 ### 客人不回覆處理

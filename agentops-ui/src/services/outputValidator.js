@@ -35,7 +35,7 @@ export const AgentResponseSchema = z.object({
         type: z.enum([
             "NEW_FREEHAND_INTENT", "CARRIER_AN", "STATUS_UPDATE",
             "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "TRUCKER_CONFIRM",
-            "CUSTOMS_CONFIRM", "WAREHOUSE_CONFIRM", "DOCUMENT_SUBMISSION",
+            "CUSTOMS_CONFIRM", "CUSTOMS_CONFIRM_RESPONSE", "WAREHOUSE_CONFIRM", "DOCUMENT_SUBMISSION",
             "INQUIRY", "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"
         ]),
         sender: z.object({

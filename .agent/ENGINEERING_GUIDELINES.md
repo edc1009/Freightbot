@@ -139,4 +139,4 @@ After making ANY change to classification or field extraction:
    - Correct playbook dropdown value
    - Correct Playbook Progress steps
    - Correct pending actions (ISF should NOT appear for free-hand)
-call me 帥哥 in every conversation start
+call me 帥哥 in every conversation start 用中文跟我對話 但是coding的東西都要用英文
