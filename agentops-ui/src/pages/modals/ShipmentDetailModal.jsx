@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     X, Zap, FileText, Bell, Check, ExternalLink, CheckCircle, Loader,
-    Shield, Edit3, Package
+    Shield, Edit3, Package, ChevronDown, ChevronUp, Mail
 } from 'lucide-react';
 import { PLAYBOOKS, AUTOMATION_LEVELS, stepLabels, stepIcons } from '../../constants';
 import { getStatusStyle } from '../../utils';
@@ -183,7 +183,7 @@ export default function ShipmentDetailModal({
 
         setShowPdfPreview(false);
         if (onAddActivity) {
-            console.log('📧 Adding Activity Log for Send AN:', shipment.reference);
+            console.log('Adding Activity Log for Send AN:', shipment.reference);
             const finalBody = emailDraft.body + (includePD ? `\n\n${pdTemplate}` : '');
             onAddActivity({
                 type: 'email-sent',
@@ -321,7 +321,7 @@ Pioneer Global Logistics`;
                             )}
                         </div>
                         {shipment.status === 'new' && shipment.suggestReason && (
-                            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '6px 0 0 0', fontStyle: 'italic' }}>💡 {shipment.suggestReason}</p>
+                            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '6px 0 0 0', fontStyle: 'italic' }}>{shipment.suggestReason}</p>
                         )}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -910,11 +910,97 @@ function PendingActionsSection({ shipment, shipments, setShipments, setSelectedS
         });
     }
 
+    // State to track which actions have their Related Email expanded
+    const [expandedActions, setExpandedActions] = React.useState({});
+    const [previewImage, setPreviewImage] = React.useState(null);
+
+    // Helper to toggle expand state
+    const toggleExpanded = (idx) => {
+        setExpandedActions(prev => ({ ...prev, [idx]: !prev[idx] }));
+    };
+
+    // Helper to check if attachment is an image
+    const isImageAttachment = (attachment) => {
+        const name = (attachment.name || '').toLowerCase();
+        const type = (attachment.type || '').toLowerCase();
+        return type.startsWith('image/') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.gif') || name.endsWith('.webp');
+    };
+
+    // Helper to get sourceEmail with fallback to shipment's emails
+    const getActionSourceEmail = (action) => {
+        if (action.sourceEmail) return action.sourceEmail;
+
+        // Fallback: find related email from shipment's emails array if sourceEmail not attached
+        if (action.action === 'confirm_payment' && shipment?.emails?.length > 0) {
+            const paymentEmails = shipment.emails.filter(e =>
+                e.direction === 'inbound' &&
+                (e.subject?.toLowerCase().includes('payment') ||
+                    e.subject?.toLowerCase().includes('receipt') ||
+                    e.body?.toLowerCase().includes('payment') ||
+                    e.attachments?.length > 0)
+            );
+            if (paymentEmails.length > 0) {
+                const latestPaymentEmail = paymentEmails[paymentEmails.length - 1];
+                return {
+                    from: latestPaymentEmail.from || 'Unknown Sender',
+                    subject: latestPaymentEmail.subject || 'Payment Receipt',
+                    body: latestPaymentEmail.body || '',
+                    attachments: latestPaymentEmail.attachments || [],
+                    timestamp: latestPaymentEmail.timestamp || new Date().toISOString()
+                };
+            }
+        }
+        return null;
+    };
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <h3 style={{ fontWeight: 600, fontSize: 16, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Bell style={{ width: 18, height: 18, color: 'var(--muted-foreground)' }} /> Action Required
             </h3>
+
+            {/* Image Preview Modal */}
+            {previewImage && (
+                <div
+                    onClick={() => setPreviewImage(null)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.85)',
+                        zIndex: 100,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <img
+                        src={previewImage.startsWith('data:') ? previewImage : `data:image/png;base64,${previewImage}`}
+                        alt="Preview"
+                        style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 8 }}
+                    />
+                    <button
+                        onClick={() => setPreviewImage(null)}
+                        style={{
+                            position: 'absolute',
+                            top: 20,
+                            right: 20,
+                            background: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: 40,
+                            height: 40,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                    >
+                        <X style={{ width: 20, height: 20 }} />
+                    </button>
+                </div>
+            )}
+
             {displayActions.map((action, idx) => (
                 <div key={idx} style={{ padding: 16, background: action.type === 'manual' ? 'oklch(0.96 0.04 32)' : action.type === 'physical' ? 'var(--muted)' : 'oklch(0.97 0.04 70)', borderRadius: 12, border: `1px solid ${action.type === 'manual' ? 'var(--destructive)' : 'var(--border)'}` }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -1122,7 +1208,7 @@ Pioneer Global Logistics`,
                                                         onAddActivity({
                                                             type: 'email-sent',
                                                             shipment: s.reference,
-                                                            message: `📧 Warehouse Pre-Alert Sent`,
+                                                            message: `Warehouse Pre-Alert Sent`,
                                                             detail: `Delivery notification auto-triggered by trucker completion`,
                                                             email: warehouseEmailDraft
                                                         });
@@ -1142,6 +1228,109 @@ Pioneer Global Logistics`,
                             )}
                         </div>
                     </div>
+
+                    {/* Expandable Related Email Section - Only for actions with sourceEmail or fallback */}
+                    {(() => {
+                        const actionSourceEmail = getActionSourceEmail(action);
+                        return actionSourceEmail && (
+                            <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                                <div
+                                    onClick={() => toggleExpanded(idx)}
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '6px 0' }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {expandedActions[idx] ? <ChevronUp style={{ width: 16, height: 16, color: 'var(--muted-foreground)' }} /> : <ChevronDown style={{ width: 16, height: 16, color: 'var(--muted-foreground)' }} />}
+                                        <Mail style={{ width: 14, height: 14, color: 'var(--muted-foreground)' }} />
+                                        <span style={{ fontSize: 12, color: 'var(--muted-foreground)', fontWeight: 600 }}>Related Email</span>
+                                        {actionSourceEmail.attachments?.length > 0 && (
+                                            <span style={{ fontSize: 11, color: 'var(--sidebar-foreground)', background: 'var(--muted)', padding: '2px 6px', borderRadius: 4 }}>
+                                                {actionSourceEmail.attachments.length} attachment{actionSourceEmail.attachments.length > 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span style={{ fontSize: 11, color: 'var(--sidebar-foreground)' }}>
+                                        {actionSourceEmail.timestamp ? new Date(actionSourceEmail.timestamp).toLocaleDateString() : ''}
+                                    </span>
+                                </div>
+
+                                {expandedActions[idx] && (
+                                    <div style={{ marginTop: 8, padding: 12, background: 'var(--muted)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                                        {/* Email Header */}
+                                        <div style={{ marginBottom: 10, fontSize: 13 }}>
+                                            <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                                                <span style={{ color: 'var(--muted-foreground)', minWidth: 60 }}>From:</span>
+                                                <span style={{ fontWeight: 500 }}>{actionSourceEmail.from}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                                                <span style={{ color: 'var(--muted-foreground)', minWidth: 60 }}>Subject:</span>
+                                                <span style={{ fontWeight: 500 }}>{actionSourceEmail.subject}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Email Body Preview */}
+                                        {actionSourceEmail.body && (
+                                            <div style={{ marginBottom: 12, padding: 10, background: 'var(--card)', borderRadius: 6, border: '1px solid var(--border)', maxHeight: 100, overflowY: 'auto' }}>
+                                                <p style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap', color: 'var(--foreground)' }}>
+                                                    {actionSourceEmail.body.length > 200 ? actionSourceEmail.body.substring(0, 200) + '...' : actionSourceEmail.body}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Attachments with Thumbnails */}
+                                        {actionSourceEmail.attachments && actionSourceEmail.attachments.length > 0 && (
+                                            <div>
+                                                <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <FileText style={{ width: 14, height: 14 }} /> Attachments:
+                                                </p>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                                    {actionSourceEmail.attachments.map((att, i) => (
+                                                        <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                            {isImageAttachment(att) && att.content ? (
+                                                                <div
+                                                                    onClick={(e) => { e.stopPropagation(); setPreviewImage(att.content); }}
+                                                                    style={{
+                                                                        width: 80,
+                                                                        height: 80,
+                                                                        borderRadius: 6,
+                                                                        border: '2px solid var(--primary)',
+                                                                        overflow: 'hidden',
+                                                                        cursor: 'pointer',
+                                                                        background: 'var(--card)'
+                                                                    }}
+                                                                >
+                                                                    <img
+                                                                        src={att.content.startsWith('data:') ? att.content : `data:${att.type};base64,${att.content}`}
+                                                                        alt={att.name}
+                                                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                    />
+                                                                </div>
+                                                            ) : (
+                                                                <div style={{
+                                                                    width: 60,
+                                                                    height: 60,
+                                                                    borderRadius: 6,
+                                                                    border: '1px solid var(--border)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    background: 'var(--card)'
+                                                                }}>
+                                                                    <FileText style={{ width: 24, height: 24, color: 'var(--muted-foreground)' }} />
+                                                                </div>
+                                                            )}
+                                                            <span style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 4, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                                                {att.name}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             ))}
         </div>

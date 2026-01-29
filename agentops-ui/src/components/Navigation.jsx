@@ -5,7 +5,7 @@ const navItems = [
     { id: 'actions', label: 'Action Center', icon: Bell },
     { id: 'shipments', label: 'Shipments', icon: Package },
     { id: 'activity', label: 'Activity', icon: Clock },
-    { id: 'messages', label: 'Messages', icon: MessageSquare },
+    // { id: 'messages', label: 'Messages', icon: MessageSquare }, // Hidden
     { id: 'settings', label: 'Settings', icon: Settings }
 ];
 

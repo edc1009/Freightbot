@@ -79,12 +79,13 @@ export const designSystemCSS = `
     --destructive: oklch(0.5523 0.1927 32.7272);
     --border: oklch(0.9037 0 0);
     --chart-2: oklch(0.6231 0.1880 259.8145);
-    --chart-3: oklch(0.6056 0.2189 292.7172);
+    --chart-3: oklch(0.6231 0.1880 259.8145);
     --chart-4: oklch(0.7686 0.1647 70.0804);
     --chart-5: oklch(0.6959 0.1491 162.4796);
     --sidebar-foreground: oklch(0.5452 0 0);
   }
   * { font-family: 'Outfit', sans-serif; box-sizing: border-box; }
+  html { overflow-y: scroll; }
   body { margin: 0; padding: 0; }
   input::placeholder { color: var(--sidebar-foreground); }
 `;

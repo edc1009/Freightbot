@@ -1,5 +1,5 @@
 import {
-    Send, Mail, Bell, AlertTriangle, CheckCircle, RefreshCw, Clock
+    Send, Mail, Bell, AlertTriangle, CheckCircle, RefreshCw, Clock, Sparkles
 } from 'lucide-react';
 
 // Generate shipment emails based on shipment data
@@ -94,7 +94,8 @@ export const getActivityIcon = (type) => {
         'reminder': <Bell style={{ ...s, color: 'var(--muted-foreground)' }} />,
         'alert': <AlertTriangle style={{ ...s, color: 'var(--destructive)' }} />,
         'completed': <CheckCircle style={{ ...s, color: 'var(--primary)' }} />,
-        'system': <RefreshCw style={{ ...s, color: 'var(--muted-foreground)' }} />
+        'system': <RefreshCw style={{ ...s, color: 'var(--muted-foreground)' }} />,
+        'agent-thinking': <Sparkles style={{ ...s, color: 'var(--chart-3)' }} />
     };
     return icons[type] || <Clock style={{ ...s, color: 'var(--muted-foreground)' }} />;
 };

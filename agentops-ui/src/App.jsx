@@ -296,7 +296,7 @@ export default function AgentOpsUI() {
 
                             // Extract email type from Agent's response for category assignment
                             let detectedEmailType = processed.email_analysis?.type || result.email_analysis?.type;
-                            console.log(`🔍 Processing Update for ${existing.reference}: Detected Type=${detectedEmailType}`);
+                            console.log(`Processing Update for ${existing.reference}: Detected Type=${detectedEmailType}`);
 
                             // HEURISTIC OVERRIDE: 7501 Customer Confirmation
                             // If email body mentions "7501" AND "confirm" or "proceed", and it's NOT a broker sending the 7501 itself.
@@ -307,7 +307,7 @@ export default function AgentOpsUI() {
 
                             // If it's a confirmation but the Agent called it 'STATUS_UPDATE' or 'SHIPMENT_DELIVERY' (Step 6), force it back to Step 4 logic
                             if (isConfirmation && (detectedEmailType === 'STATUS_UPDATE' || detectedEmailType === 'SHIPMENT_DELIVERY' || !detectedEmailType)) {
-                                console.log('⚠️ Heuristic Override: Detected 7501 Customer Confirmation');
+                                console.log('Heuristic Override: Detected 7501 Customer Confirmation');
                                 detectedEmailType = 'CUSTOMS_CONFIRM_RESPONSE'; // Internal type for handling
                             }
 
@@ -404,7 +404,7 @@ export default function AgentOpsUI() {
                         // Do NOT create new shipment, only log an alert
                         addActivityLog({
                             type: 'alert',
-                            message: `⚠️ ESCALATION: Carrier AN received but no matching shipment found`,
+                            message: `ESCALATION: Carrier AN received but no matching shipment found`,
                             detail: `Reference: ${processed.reference}. Manual review required. Email: ${emailData.subject}`
                         });
                     }
@@ -469,9 +469,17 @@ export default function AgentOpsUI() {
                                             action: 'confirm_payment',
                                             step: shipment.step,
                                             title: 'Confirm Payment Received',
-                                            desc: `${payment.amount} ${payment.currency} via ${payment.type} (Ref: ${payment.reference})${isBulk ? ' ⚠️ BULK' : ''}`,
+                                            desc: `${payment.amount} ${payment.currency} via ${payment.type} (Ref: ${payment.reference})${isBulk ? ' BULK' : ''}`,
                                             riskReason: isBulk ? 'Bulk Payment - verify allocation' : 'Payment Verification',
-                                            paymentData: payment
+                                            paymentData: payment,
+                                            // Store the triggering email for review before approval
+                                            sourceEmail: {
+                                                from: emailData.from || 'Unknown Sender',
+                                                subject: emailData.subject || 'Payment Receipt',
+                                                body: emailData.body || '',
+                                                attachments: emailData.attachments || [],
+                                                timestamp: new Date().toISOString()
+                                            }
                                         }
                                     ]
                                 };
@@ -579,7 +587,7 @@ Pioneer Global Logistics`,
                                 addActivityLog({
                                     type: 'email-sent',
                                     shipment: shipment.reference,
-                                    message: `📧 Warehouse Pre-Alert Sent`,
+                                    message: `Warehouse Pre-Alert Sent`,
                                     detail: `Delivery notification sent to ${warehouseEmail} for ${deliveryTime}`,
                                     email: warehouseEmailDraft
                                 });
@@ -665,7 +673,7 @@ Pioneer Global Logistics`,
                                 addActivityLog({
                                     type: 'email-sent',
                                     shipment: shipment.reference,
-                                    message: `📧 7501 Duty Confirmation Sent to Customer`,
+                                    message: `7501 Duty Confirmation Sent to Customer`,
                                     detail: `Auto-forwarded 7501 (Duty: $${dutyAmount}) to ${customerEmail}. Awaiting customer confirmation.`,
                                     email: customerDutyEmail
                                 });
@@ -674,7 +682,7 @@ Pioneer Global Logistics`,
                                 addActivityLog({
                                     type: 'alert',
                                     shipment: shipment.reference,
-                                    message: `⚠️ 7501 Received but No Customer Email`,
+                                    message: `7501 Received but No Customer Email`,
                                     detail: `Please add Consignee/Customer email to stakeholders, then manually forward 7501 for confirmation.`
                                 });
                             }
@@ -824,7 +832,7 @@ Pioneer Global Logistics`,
                                 addActivityLog({
                                     type: 'email-sent',
                                     shipment: shipment.reference,
-                                    message: `📧 Customs Documents Sent to Broker`,
+                                    message: `Customs Documents Sent to Broker`,
                                     detail: `Forwarded ${customerAttachments.length} customer doc(s) + Arrival Notice to ${brokerEmail}`,
                                     email: brokerEmailDraft
                                 });
@@ -833,7 +841,7 @@ Pioneer Global Logistics`,
                                 addActivityLog({
                                     type: 'alert',
                                     shipment: shipment.reference,
-                                    message: `⚠️ Customs Documents Received but No Broker Email`,
+                                    message: `Customs Documents Received but No Broker Email`,
                                     detail: `Please add Customs Broker contact to stakeholders.`
                                 });
                             }
@@ -853,10 +861,19 @@ Pioneer Global Logistics`,
                 }
             }
 
-            // 2. Add Email to Activity/Messages (Mock logic as we don't have full email structure)
+            // NEW: Add Agent Thinking to Activity Log
             addActivityLog({
-                type: 'email',
-                message: `Processed Email: ${emailData.subject}`,
+                type: 'agent-thinking',
+                message: `Agent Processed: ${emailData.subject}`,
+                // Structured thinking process for UI display
+                thinking: {
+                    initial_thought: result.thought_start || null,
+                    reasoning: result.reasoning || null,
+                    email_type: result.email_analysis?.type || 'UNKNOWN',
+                    confidence: result.email_analysis?.confidence || null,
+                    action: result.action?.type || null,
+                    action_authority: result.action?.authority || null
+                },
                 detail: result.email_analysis?.summary || 'No summary'
             });
 
@@ -880,7 +897,7 @@ Pioneer Global Logistics`,
                     currentDate={currentDate}
                     onOpenTestAgent={() => setShowTestAgentModal(true)}
                     onClearAllShipments={() => {
-                        console.log('🗑️ Clearing all shipments...');
+                        console.log('Clearing all shipments...');
                         setShipments([]);
                         setActivities([]);
                         setMessages([]);

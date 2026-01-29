@@ -37,7 +37,7 @@ export default function ShipmentsPage({
     });
 
     return (
-        <div>
+        <div style={{ width: '100%' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 20 }}>
                 {statCards.map(stat => (
                     <StatCard
