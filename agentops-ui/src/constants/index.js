@@ -70,7 +70,7 @@ export const designSystemCSS = `
     --background: oklch(0.9911 0 0);
     --foreground: oklch(0.2046 0 0);
     --card: oklch(0.9911 0 0);
-    --primary: oklch(0.8348 0.1302 160.9080);
+    --primary: oklch(0.7040 0.1400 182.5030);
     --primary-foreground: oklch(0.2626 0.0147 166.4589);
     --muted: oklch(0.9461 0 0);
     --muted-foreground: oklch(0.2435 0 0);
