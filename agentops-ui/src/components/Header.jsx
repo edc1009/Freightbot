@@ -9,13 +9,10 @@ export default function Header({ currentDate, onOpenTestAgent, onClearAllShipmen
         <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 40 }}>
             <div style={{ maxWidth: 1280, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div style={{ width: 46, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <img src={logo} alt="FreightBot" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={logo} alt="FreightBot" style={{ height: 29, width: 'auto', objectFit: 'contain' }} />
                     </div>
-                    <div>
-                        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>FreightBot</h1>
 
-                    </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--muted)', borderRadius: 10 }}>
@@ -26,6 +23,7 @@ export default function Header({ currentDate, onOpenTestAgent, onClearAllShipmen
                         <button
                             onClick={onClearAllShipments}
                             style={{
+                                
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -51,7 +49,7 @@ export default function Header({ currentDate, onOpenTestAgent, onClearAllShipmen
                             gap: 8,
                             padding: '10px 18px',
                             background: 'var(--primary)',
-                            color: 'var(--primary-foreground)',
+                            color: '#FFFFFF',
                             border: 'none',
                             borderRadius: 10,
                             fontSize: 13,
