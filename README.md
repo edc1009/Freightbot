@@ -1,4 +1,5 @@
 # Project Story: The AI-Powered Freight Assistant
+<img width="1920" height="1080" alt="Freightbot Cover" src="https://github.com/user-attachments/assets/df05e1ce-2544-457b-8dcd-1841c456c201" />
 
 ## Inspiration
 I currently work as a Product Manager at a freight forwarder, where daily operations rely heavily on **Operations Specialists (OPs)**. An OP handles the entire lifecycle of a shipment—from container loading to customs clearance and trucking. This process relies heavily on manual email communication, which is time-consuming and prone to human error.
