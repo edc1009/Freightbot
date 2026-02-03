@@ -18,4 +18,9 @@ build/
 
 # OS
 .DS_Store
-Thumbs.db
+
+# Sensitive/Internal documentation
+TEST FILE/freehand test/
+productdevelopmentguideline.md
+.agent/ENGINEERING_GUIDELINES.md
+

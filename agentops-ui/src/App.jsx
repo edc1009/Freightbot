@@ -19,8 +19,6 @@ const EMAIL_TYPE_TO_CATEGORY = {
     'WAREHOUSE_CONFIRM': 5,      // Warehouse Coordination
     'STATUS_UPDATE': 6,          // Shipment Delivery
     'PAYMENT_CONFIRM': 7,        // Billing & Collection
-    'PAYMENT_CONFIRM': 7,        // Billing & Collection
-    'PAYMENT_CONFIRM': 7,        // Billing & Collection
     'PAYMENT_FOLLOWUP': 7,       // Billing & Collection
     'CUSTOMS_CONFIRM_RESPONSE': 4, // Explicit mapping for our new internal type
     // Fallbacks for other types to avoid getting stuck in wrong step

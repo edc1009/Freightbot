@@ -242,11 +242,13 @@ export default function ActivityPage({ activities }) {
                 <h2 style={{ fontWeight: 600, fontSize: 18, margin: 0 }}>Recent Activity</h2>
             </div>
             <div>
-                {activities.map((activity, idx) => (
-                    activity.type === 'agent-thinking'
-                        ? <AgentThinkingCard key={activity.id} activity={activity} />
-                        : <StandardActivityCard key={activity.id} activity={activity} isLast={idx === activities.length - 1} />
-                ))}
+                {activities
+                    .filter(a => a.message !== 'Shipment Updated via Agent') // Filter out redundant updates
+                    .map((activity, idx) => (
+                        activity.type === 'agent-thinking'
+                            ? <AgentThinkingCard key={activity.id} activity={activity} />
+                            : <StandardActivityCard key={activity.id} activity={activity} isLast={idx === activities.length - 1} />
+                    ))}
             </div>
         </div>
     );

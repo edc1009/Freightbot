@@ -5,6 +5,7 @@ import {
     Paperclip, FileText
 } from 'lucide-react';
 import { PLAYBOOKS, AUTOMATION_LEVELS, stepLabels, stepIcons } from '../../constants';
+import { formatDateTime } from '../../utils';
 
 export default function ActivityLogModal({
     shipment,
@@ -21,7 +22,10 @@ export default function ActivityLogModal({
     const emailIds = new Set(emails.map(e => e.id));
 
     // 2. Map Activities to Pseudo-Emails
-    const shipmentActivities = activities.filter(a => a.shipment === shipment.reference || a.shipment === shipment.id);
+    const shipmentActivities = activities.filter(a =>
+        (a.shipment === shipment.reference || a.shipment === shipment.id) &&
+        a.message !== 'Shipment Updated via Agent' // Filter out redundant updates
+    );
     const activityItems = shipmentActivities.map(a => {
         // If activity already contains a full email object (e.g., auto-sent email), use it directly
         if (a.email && a.email.id) {
@@ -58,9 +62,9 @@ export default function ActivityLogModal({
             direction: 'system', // Special direction for rendering
             from: 'System',
             to: '-',
-            subject: a.type === 'email-sent' ? 'Email Sent' : a.type === 'document' ? 'Document Generated' : 'System Activity',
+            subject: a.type === 'email-sent' ? 'Email Sent' : a.type === 'document' ? 'Document Generated' : (a.message || 'System Activity'),
             body: a.detail || a.message,
-            timestamp: new Date(a.timestamp).toLocaleString(),
+            timestamp: formatDateTime(a.timestamp),
             read: true,
             autoLevel: 'auto',
             originalActivity: a // Keep reference for debugging
@@ -224,7 +228,7 @@ function EmailItem({ email, isExpanded, onToggle }) {
                         {email.cc && <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>(CC: {email.cc})</span>}
                     </div>
                     <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{email.subject}</p>
-                    <p style={{ fontSize: 12, color: 'var(--sidebar-foreground)', margin: 0 }}>{email.timestamp}</p>
+                    <p style={{ fontSize: 12, color: 'var(--sidebar-foreground)', margin: 0 }}>{formatDateTime(email.timestamp)}</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     {email.direction === 'outbound' && email.autoLevel && (
