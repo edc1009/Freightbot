@@ -78,8 +78,6 @@ export const getStatusStyle = (status) => {
     const styles = {
         'completed': { background: 'oklch(0.92 0.06 160)', color: 'var(--foreground)', border: '1px solid oklch(0.8 0.1 160)' },
         'in-progress': { background: 'oklch(0.92 0.06 250)', color: 'var(--foreground)', border: '1px solid oklch(0.7 0.15 250)' },
-        'waiting': { background: 'oklch(0.95 0.06 70)', color: 'var(--foreground)', border: '1px solid oklch(0.8 0.12 70)' },
-        'alert': { background: 'var(--destructive)', color: 'white', border: '1px solid var(--destructive)' },
         'new': { background: 'oklch(0.92 0.08 290)', color: 'var(--foreground)', border: '1px solid oklch(0.7 0.15 290)' }
     };
     return styles[status] || { background: 'var(--muted)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' };
@@ -101,7 +99,24 @@ export const getActivityIcon = (type) => {
 };
 
 // Format date helper
-export const formatDate = (date) => date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+// Format date helper
+export const formatDate = (date) => {
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+// Format date and time helper
+export const formatDateTime = (date) => {
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? date : d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+};
 
 // Get grouped emails by category
 export const getGroupedEmails = (shipment) => {
