@@ -272,15 +272,28 @@ function EmailItem({ email, isExpanded, onToggle }) {
                                             display: 'flex', alignItems: 'center', gap: 8,
                                             padding: '8px 12px', background: 'var(--card)',
                                             border: '1px solid var(--border)', borderRadius: 8,
-                                            fontSize: 13, color: 'var(--foreground)', cursor: 'pointer'
+                                            fontSize: 13, color: 'var(--foreground)', cursor: 'pointer',
+                                            transition: 'background 0.2s'
                                         }}
-                                        onClick={() => {
+                                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.background = 'var(--card)'}
+                                        onClick={(e) => {
+                                            // CRITICAL: Stop event bubbling to prevent parent onClick from triggering
+                                            e.stopPropagation();
+                                            
+                                            console.log('📎 Attachment clicked:', att.name);
+                                            console.log('📎 Content available:', !!att.content);
+                                            console.log('📎 Content length:', att.content?.length || 0);
+                                            console.log('📎 Content starts with:', att.content?.substring(0, 50));
+                                            
                                             try {
                                                 // 1. Try Blob approach (Best for performance/stability)
                                                 if (att.content && att.content.startsWith('data:')) {
+                                                    console.log('📎 Using data: URL approach');
                                                     const base64Arr = att.content.split(',');
                                                     const base64 = base64Arr[1] || base64Arr[0]; // Handle if data: prefix is missing
                                                     const mime = base64Arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+                                                    console.log('📎 Detected MIME type:', mime);
 
                                                     const byteCharacters = atob(base64);
                                                     const byteNumbers = new Array(byteCharacters.length);
@@ -290,20 +303,33 @@ function EmailItem({ email, isExpanded, onToggle }) {
                                                     const byteArray = new Uint8Array(byteNumbers);
                                                     const blob = new Blob([byteArray], { type: mime });
                                                     const blobUrl = URL.createObjectURL(blob);
+                                                    console.log('📎 Opening blob URL:', blobUrl);
+                                                    window.open(blobUrl, '_blank');
+                                                } else if (att.content && att.content.length > 100) {
+                                                    // 2. Raw base64 without data: prefix - assume PDF
+                                                    console.log('📎 Raw base64 detected, treating as PDF');
+                                                    const mime = att.type || 'application/pdf';
+                                                    const byteCharacters = atob(att.content);
+                                                    const byteNumbers = new Array(byteCharacters.length);
+                                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                                    }
+                                                    const byteArray = new Uint8Array(byteNumbers);
+                                                    const blob = new Blob([byteArray], { type: mime });
+                                                    const blobUrl = URL.createObjectURL(blob);
+                                                    console.log('📎 Opening blob URL:', blobUrl);
                                                     window.open(blobUrl, '_blank');
                                                 } else if (att.content) {
-                                                    // 2. Fallback for non-base64 (e.g. normal URLs)
+                                                    // 3. Fallback for URLs
+                                                    console.log('📎 Treating as URL');
                                                     window.open(att.content, '_blank');
                                                 } else {
-                                                    alert('File content not available.');
+                                                    console.warn('📎 No content available for attachment:', att.name);
+                                                    alert(`File content not available for: ${att.name}\n\nThe file may not have been properly attached or the content was not preserved.`);
                                                 }
                                             } catch (err) {
-                                                console.error('Error opening file:', err);
-                                                // 3. Fallback to basic iframe approach if Blob fails
-                                                const win = window.open();
-                                                if (win) {
-                                                    win.document.write('<iframe src="' + att.content + '" frameborder="0" style="border:0;width:100%;height:100%" allowfullscreen></iframe>');
-                                                }
+                                                console.error('📎 Error opening file:', err);
+                                                alert(`Error opening file: ${att.name}\n\n${err.message}`);
                                             }
                                         }}
                                     >
