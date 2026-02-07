@@ -2,18 +2,17 @@ import React from 'react';
 import { Ship, Send, Calendar, Trash2 } from 'lucide-react';
 import { formatDate } from '../utils';
 
+import logo from '../assets/logo.svg';
+
 export default function Header({ currentDate, onOpenTestAgent, onClearAllShipments, shipmentCount }) {
     return (
         <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 40 }}>
             <div style={{ maxWidth: 1280, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div style={{ width: 46, height: 46, background: 'var(--primary)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Ship style={{ width: 26, height: 26, color: 'var(--primary-foreground)' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={logo} alt="FreightBot" style={{ height: 29, width: 'auto', objectFit: 'contain' }} />
                     </div>
-                    <div>
-                        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>AgentOps</h1>
-                        <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: 0 }}>AI Freight Operations</p>
-                    </div>
+
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--muted)', borderRadius: 10 }}>
@@ -24,22 +23,22 @@ export default function Header({ currentDate, onOpenTestAgent, onClearAllShipmen
                         <button
                             onClick={onClearAllShipments}
                             style={{
+                                
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 8,
-                                padding: '10px 18px',
-                                background: 'var(--destructive)',
-                                color: 'white',
+                                justifyContent: 'center',
+                                width: 36,
+                                height: 36,
+                                padding: 0,
+                                background: 'transparent',
+                                color: 'var(--destructive)',
                                 border: 'none',
                                 borderRadius: 10,
-                                fontSize: 13,
-                                fontWeight: 500,
                                 cursor: 'pointer'
                             }}
-                            title="Clear all shipments"
+                            title={`Clear all shipments (${shipmentCount})`}
                         >
-                            <Trash2 style={{ width: 16, height: 16 }} />
-                            Clear All ({shipmentCount})
+                            <Trash2 style={{ width: 18, height: 18 }} />
                         </button>
                     )}
                     <button
@@ -50,7 +49,7 @@ export default function Header({ currentDate, onOpenTestAgent, onClearAllShipmen
                             gap: 8,
                             padding: '10px 18px',
                             background: 'var(--primary)',
-                            color: 'var(--primary-foreground)',
+                            color: '#FFFFFF',
                             border: 'none',
                             borderRadius: 10,
                             fontSize: 13,

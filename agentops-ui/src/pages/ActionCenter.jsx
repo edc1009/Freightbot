@@ -13,7 +13,12 @@ export default function ActionCenter({
     toggleISFFiled // Passed from App
 }) {
     // 1. Synthesize ISF Actions (Fix for missing action)
-    const needsISF = shipments.filter(s => s.step === 1 && !s.isfFiled);
+    // CRITICAL: Only show ISF for import-fcl or import-lcl playbooks, NOT free-hand
+    const needsISF = shipments.filter(s =>
+        (s.playbook === 'import-fcl' || s.playbook === 'import-lcl') &&
+        s.step === 1 &&
+        !s.isfFiled
+    );
     const synthesizedISFActions = needsISF.map(s => ({
         type: 'manual',
         action: 'isf_filing',
@@ -54,7 +59,7 @@ export default function ActionCenter({
     const autoHandledCount = activities.filter(a => ['email-sent', 'document', 'status', 'email-received'].includes(a.type)).length;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
             {/* Summary Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
                 <SummaryCard icon={Edit3} label="Pending Approvals" value={pendingApprovals} color="var(--chart-4)" />
@@ -80,18 +85,12 @@ export default function ActionCenter({
                             onEdit={() => setEditingAction(editingAction === item.uniqueId ? null : item.uniqueId)}
                             onCloseEdit={() => setEditingAction(null)}
                             onApprove={() => {
-                                const updated = shipments.map(s => {
-                                    if (s.id === item.shipment.id) {
-                                        return {
-                                            ...s,
-                                            pendingActions: s.pendingActions.filter(a => a.action !== item.action),
-                                            step: Math.min(s.step + 1, 5),
-                                            status: 'in-progress'
-                                        };
-                                    }
-                                    return s;
-                                });
-                                setShipments(updated);
+                                // Find the action index in the shipment's pendingActions
+                                const actionIndex = item.shipment.pendingActions.findIndex(
+                                    a => a.action === item.action && a.type === item.type
+                                );
+                                // Use the onApprove handler from App.jsx which has proper handling
+                                onApprove(item.shipment.id, actionIndex);
                                 setEditingAction(null);
                             }}
                         />
@@ -126,17 +125,12 @@ export default function ActionCenter({
                             key={idx}
                             item={item}
                             onComplete={() => {
-                                const updated = shipments.map(s => {
-                                    if (s.id === item.shipment.id) {
-                                        return {
-                                            ...s,
-                                            status: 'completed',
-                                            pendingActions: s.pendingActions.filter(a => a.action !== item.action)
-                                        };
-                                    }
-                                    return s;
-                                });
-                                setShipments(updated);
+                                // Find the action index in the shipment's pendingActions
+                                const actionIndex = item.shipment.pendingActions.findIndex(
+                                    a => a.action === item.action && a.type === item.type
+                                );
+                                // Use the onApprove handler from App.jsx which has proper handling for freight_release
+                                onApprove(item.shipment.id, actionIndex);
                             }}
                             onViewDetails={() => setSelectedShipment(item.shipment)}
                         />
@@ -206,16 +200,16 @@ function ApprovalCard({ item, isEditing, onEdit, onCloseEdit, onApprove }) {
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>•</span>
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>{item.shipment.customer}</span>
                         <span style={{ padding: '2px 8px', background: 'var(--chart-4)', color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {item.action === 'send_email' ? '📧 Send Email' : item.action === 'confirm_time' ? '🕐 Confirm Time' : item.action === 'approve_payment' ? '💰 Payment' : 'Approve'}
+                            {item.action === 'send_email' ? 'Send Email' : item.action === 'confirm_time' ? 'Confirm Time' : item.action === 'confirm_payment' ? 'Confirm Payment' : item.action === 'approve_payment' ? 'Payment' : 'Approve'}
                         </span>
                     </div>
                     <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{item.title}</p>
                     <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: '0 0 8px 0' }}>{item.desc}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
                         {item.recipients?.length > 0 && (
-                            <span style={{ color: 'var(--muted-foreground)' }}>📬 {item.recipients.join(', ')}</span>
+                            <span style={{ color: 'var(--muted-foreground)' }}>{item.recipients.join(', ')}</span>
                         )}
-                        <span style={{ color: 'var(--muted-foreground)' }}>⚡ {item.riskReason}</span>
+                        <span style={{ color: 'var(--muted-foreground)' }}>{item.riskReason}</span>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -237,6 +231,7 @@ function ApprovalCard({ item, isEditing, onEdit, onCloseEdit, onApprove }) {
 function EditPanel({ item, onClose, onApprove }) {
     const fileInputRef = React.useRef(null);
     const [attachments, setAttachments] = React.useState(item.attachments || []);
+    const [previewImage, setPreviewImage] = React.useState(null);
 
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files[0]) {
@@ -244,26 +239,193 @@ function EditPanel({ item, onClose, onApprove }) {
         }
     };
 
+    // Check if source email exists (for payment confirmations, etc.)
+    // If not on action, try to find from shipment's email history (fallback for old data)
+    let sourceEmail = item.sourceEmail;
+
+    // Fallback: find related email from shipment's emails array if sourceEmail not attached
+    if (!sourceEmail && item.action === 'confirm_payment' && item.shipment?.emails?.length > 0) {
+        // Find the most recent inbound email that looks like a payment receipt
+        const paymentEmails = item.shipment.emails.filter(e =>
+            e.direction === 'inbound' &&
+            (e.subject?.toLowerCase().includes('payment') ||
+                e.subject?.toLowerCase().includes('receipt') ||
+                e.body?.toLowerCase().includes('payment') ||
+                e.attachments?.length > 0)
+        );
+        if (paymentEmails.length > 0) {
+            // Use the most recent one
+            const latestPaymentEmail = paymentEmails[paymentEmails.length - 1];
+            sourceEmail = {
+                from: latestPaymentEmail.from || 'Unknown Sender',
+                subject: latestPaymentEmail.subject || 'Payment Receipt',
+                body: latestPaymentEmail.body || '',
+                attachments: latestPaymentEmail.attachments || [],
+                timestamp: latestPaymentEmail.timestamp || new Date().toISOString()
+            };
+        }
+    }
+
+    // Helper to check if attachment is an image
+    const isImageAttachment = (attachment) => {
+        const name = (attachment.name || '').toLowerCase();
+        const type = (attachment.type || '').toLowerCase();
+        return type.startsWith('image/') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.gif') || name.endsWith('.webp');
+    };
+
     return (
         <div style={{ marginTop: 16, padding: 16, background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            {/* ... inputs ... */}
+
+            {/* Original Email Section - Show when sourceEmail exists */}
+            {sourceEmail && (
+                <div style={{ marginBottom: 16, padding: 14, background: 'var(--muted)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                        <Mail style={{ width: 16, height: 16, color: 'var(--muted-foreground)' }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>Original Email</span>
+                    </div>
+
+                    {/* Email Header */}
+                    <div style={{ marginBottom: 10, fontSize: 13 }}>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                            <span style={{ color: 'var(--muted-foreground)', minWidth: 60 }}>From:</span>
+                            <span style={{ fontWeight: 500 }}>{sourceEmail.from}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                            <span style={{ color: 'var(--muted-foreground)', minWidth: 60 }}>Subject:</span>
+                            <span style={{ fontWeight: 500 }}>{sourceEmail.subject}</span>
+                        </div>
+                        {sourceEmail.timestamp && (
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <span style={{ color: 'var(--muted-foreground)', minWidth: 60 }}>Date:</span>
+                                <span style={{ fontSize: 12, color: 'var(--sidebar-foreground)' }}>
+                                    {new Date(sourceEmail.timestamp).toLocaleString()}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Email Body Preview */}
+                    {sourceEmail.body && (
+                        <div style={{ marginBottom: 12, padding: 10, background: 'var(--card)', borderRadius: 6, border: '1px solid var(--border)', maxHeight: 120, overflowY: 'auto' }}>
+                            <p style={{ margin: 0, fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--foreground)' }}>
+                                {sourceEmail.body.length > 300 ? sourceEmail.body.substring(0, 300) + '...' : sourceEmail.body}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Attachments with Image Preview */}
+                    {sourceEmail.attachments && sourceEmail.attachments.length > 0 && (
+                        <div style={{ marginTop: 10 }}>
+                            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <FileText style={{ width: 14, height: 14 }} /> Attachments ({sourceEmail.attachments.length}):
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                {sourceEmail.attachments.map((att, i) => (
+                                    <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                        {isImageAttachment(att) && att.content ? (
+                                            <div
+                                                onClick={() => setPreviewImage(att.content)}
+                                                style={{
+                                                    width: 80,
+                                                    height: 80,
+                                                    borderRadius: 6,
+                                                    border: '1px solid var(--border)',
+                                                    overflow: 'hidden',
+                                                    cursor: 'pointer',
+                                                    background: 'var(--card)'
+                                                }}
+                                            >
+                                                <img
+                                                    src={att.content.startsWith('data:') ? att.content : `data:${att.type};base64,${att.content}`}
+                                                    alt={att.name}
+                                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div style={{
+                                                width: 60,
+                                                height: 60,
+                                                borderRadius: 6,
+                                                border: '1px solid var(--border)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                background: 'var(--card)'
+                                            }}>
+                                                <FileText style={{ width: 24, height: 24, color: 'var(--muted-foreground)' }} />
+                                            </div>
+                                        )}
+                                        <span style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 4, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {att.name}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Image Preview Modal */}
+            {previewImage && (
+                <div
+                    onClick={() => setPreviewImage(null)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.85)',
+                        zIndex: 100,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <img
+                        src={previewImage.startsWith('data:') ? previewImage : `data:image/png;base64,${previewImage}`}
+                        alt="Preview"
+                        style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 8 }}
+                    />
+                    <button
+                        onClick={() => setPreviewImage(null)}
+                        style={{
+                            position: 'absolute',
+                            top: 20,
+                            right: 20,
+                            background: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: 40,
+                            height: 40,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                    >
+                        <X style={{ width: 20, height: 20 }} />
+                    </button>
+                </div>
+            )}
+
+            {/* Draft Email Section */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <Mail style={{ width: 16, height: 16, color: 'var(--muted-foreground)' }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>Draft Email Preview</span>
+                <Edit3 style={{ width: 16, height: 16, color: 'var(--muted-foreground)' }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>✏️ Your Reply</span>
             </div>
             {/* ... Inputs omitted for brevity, keeping structure ... */}
             <div style={{ marginBottom: 12 }}>
                 <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '0 0 4px 0' }}>To:</p>
-                <input type="text" defaultValue={item.recipients?.join(', ') || ''} placeholder="recipient@example.com" style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
+                <input type="text" defaultValue={item.recipients?.join(', ') || (sourceEmail?.from || '')} placeholder="recipient@example.com" style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
             </div>
             {/* ... other inputs ... */}
             <div style={{ marginBottom: 12 }}>
                 <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '0 0 4px 0' }}>Subject:</p>
-                <input type="text" defaultValue={item.action === 'send_email' ? `ISF Documents Required - ${item.shipment.reference}` : `RE: ${item.title} - ${item.shipment.reference}`} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
+                <input type="text" defaultValue={item.action === 'send_email' ? `ISF Documents Required - ${item.shipment.reference}` : `RE: ${sourceEmail?.subject || item.title} - ${item.shipment.reference}`} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
             </div>
             <div style={{ marginBottom: 12 }}>
                 <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '0 0 4px 0' }}>Body:</p>
-                <textarea defaultValue={item.action === 'send_email' ? `Dear ${item.shipment.customer},\n\nWe need to file the ISF for your shipment ${item.shipment.reference}. Please provide:\n\n1. Commercial Invoice\n2. Packing List\n3. Bill of Lading\n\nBest regards,\nAgentOps` : item.action === 'confirm_time' ? `Hi,\n\nConfirmed. Please proceed with the pickup on ${item.desc.replace('Trucker proposed ', '')}.\n\nReference: ${item.shipment.reference}\n\nThank you.` : `Regarding ${item.title}...`} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }} />
+                <textarea defaultValue={item.action === 'send_email' ? `Dear ${item.shipment.customer},\n\nWe need to file the ISF for your shipment ${item.shipment.reference}. Please provide:\n\n1. Commercial Invoice\n2. Packing List\n3. Bill of Lading\n\nBest regards,\nAgentOps` : item.action === 'confirm_time' ? `Hi,\n\nConfirmed. Please proceed with the pickup on ${item.desc.replace('Trucker proposed ', '')}.\n\nReference: ${item.shipment.reference}\n\nThank you.` : item.action === 'confirm_payment' ? `Hi,\n\nThank you for your payment. We have received and confirmed the payment.\n\nReference: ${item.shipment.reference}\nAmount: ${item.desc}\n\nBest regards,\nPioneer Global Logistics` : `Regarding ${item.title}...`} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }} />
             </div>
 
             <div style={{ marginBottom: 16, padding: 12, background: 'var(--muted)', borderRadius: 6, border: '1px dashed var(--border)' }}>
@@ -279,12 +441,12 @@ function EditPanel({ item, onClose, onApprove }) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {item.action === 'send_email' && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}>
-                            📄 ISF_Template.pdf <X style={{ width: 12, height: 12, color: 'var(--muted-foreground)', cursor: 'pointer' }} />
+                            ISF_Template.pdf <X style={{ width: 12, height: 12, color: 'var(--muted-foreground)', cursor: 'pointer' }} />
                         </span>
                     )}
                     {attachments.map((file, i) => (
                         <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}>
-                            📄 {file} <X style={{ width: 12, height: 12, color: 'var(--muted-foreground)', cursor: 'pointer' }} />
+                            {file} <X style={{ width: 12, height: 12, color: 'var(--muted-foreground)', cursor: 'pointer' }} />
                         </span>
                     ))}
                     {attachments.length === 0 && item.action !== 'send_email' && (
@@ -298,7 +460,7 @@ function EditPanel({ item, onClose, onApprove }) {
                     onClick={onApprove}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                 >
-                    <Send style={{ width: 14, height: 14 }} /> Save & Send
+                    <Check style={{ width: 14, height: 14 }} /> Approve
                 </button>
             </div>
         </div>
@@ -315,13 +477,13 @@ function PhysicalCard({ item, onComplete, onViewDetails }) {
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>•</span>
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>{item.shipment.customer}</span>
                         <span style={{ padding: '2px 8px', background: 'var(--foreground)', color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {item.action === 'freight_release' ? '📦 Freight Release' : '🔧 Physical'}
+                            {item.action === 'freight_release' ? 'Freight Release' : 'Physical'}
                         </span>
                     </div>
                     <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{item.title}</p>
                     <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: '0 0 8px 0' }}>{item.desc}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
-                        <span style={{ color: 'var(--muted-foreground)' }}>📋 {item.riskReason}</span>
+                        <span style={{ color: 'var(--muted-foreground)' }}>{item.riskReason}</span>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -347,13 +509,13 @@ function ManualCard({ item, onViewDetails, toggleISFFiled }) {
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>•</span>
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>{item.shipment.customer}</span>
                         <span style={{ padding: '2px 8px', background: 'var(--destructive)', color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {item.action === 'isf_filing' ? '📋 ISF Filing' : item.action === 'approve_payment' ? '💰 High Amount' : item.action === 'escalation' ? '🚨 Escalation' : '⚠️ Manual'}
+                            {item.action === 'isf_filing' ? 'ISF Filing' : item.action === 'approve_payment' ? 'High Amount' : item.action === 'escalation' ? 'Escalation' : 'Manual'}
                         </span>
                     </div>
                     <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{item.title}</p>
                     <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: '0 0 8px 0' }}>{item.desc}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
-                        <span style={{ color: 'var(--muted-foreground)' }}>⚠️ {item.riskReason}</span>
+                        <span style={{ color: 'var(--muted-foreground)' }}>{item.riskReason}</span>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -428,12 +590,12 @@ function WaitingCard({ item, onViewDetails }) {
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>•</span>
                         <span style={{ fontSize: 13, color: 'var(--sidebar-foreground)' }}>{item.shipment.customer}</span>
                         <span style={{ padding: '2px 8px', background: 'oklch(0.6 0.15 250)', color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {item.key === 'trucker_coordination' ? '🚛 Trucker' : item.key === 'customs_coordination' ? '🛃 Customs' : item.key === 'warehouse_coordination' ? '🏭 Warehouse' : 'Waiting'}
+                            {item.key === 'truck_scheduling' ? 'Trucker' : item.key === 'customs_coordination' ? 'Customs' : item.key === 'warehouse_coordination' ? 'Warehouse' : 'Waiting'}
                         </span>
                     </div>
                     <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 4px 0' }}>Waiting for Reply</p>
                     <p style={{ fontSize: 13, color: 'var(--sidebar-foreground)', margin: '0 0 8px 0' }}>
-                        Email sent to {item.key === 'trucker_coordination' ? 'Trucker' : item.key === 'customs_coordination' ? 'Customs Broker' : 'Warehouse'}. Waiting for confirmation.
+                        Email sent to {item.key === 'truck_scheduling' ? 'Trucker' : item.key === 'customs_coordination' ? 'Customs Broker' : 'Warehouse'}. Waiting for confirmation.
                     </p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
                         <span style={{ color: 'var(--muted-foreground)' }}>⏳ Sent on {item.sentAt ? item.sentAt.split(' ')[0] : 'today'}</span>

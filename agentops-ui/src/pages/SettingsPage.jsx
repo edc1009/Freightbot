@@ -21,9 +21,9 @@ export default function SettingsPage({ apiKey, setApiKey }) {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 24 }}>
             {/* API Key Configuration */}
-            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: 28 }}>
+            <div style={{ width: '100%', boxSizing: 'border-box', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: 28 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
                     <div style={{ width: 40, height: 40, background: 'var(--primary)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Key style={{ width: 22, height: 22, color: 'white' }} />
@@ -106,7 +106,7 @@ export default function SettingsPage({ apiKey, setApiKey }) {
             </div>
 
             {/* Playbooks Overview */}
-            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: 28 }}>
+            <div style={{ width: '100%', boxSizing: 'border-box', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: 28 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
                     <div style={{ width: 40, height: 40, background: 'var(--chart-5)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <FileText style={{ width: 22, height: 22, color: 'white' }} />
@@ -145,7 +145,7 @@ export default function SettingsPage({ apiKey, setApiKey }) {
             </div>
 
             {/* Auto-Escalation Rules */}
-            <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: 28 }}>
+            <div style={{ width: '100%', boxSizing: 'border-box', background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: 28 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
                     <div style={{ width: 40, height: 40, background: 'var(--destructive)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Shield style={{ width: 22, height: 22, color: 'white' }} />

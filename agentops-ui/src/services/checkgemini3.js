@@ -2,7 +2,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // 請工程師在此處替換成他目前使用的 API KEY
-const API_KEY = "AIzaSyDKhp5hk0pgiATI19IH112uUNCv71umltY";
+const API_KEY = "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 async function listGemini3Models() {

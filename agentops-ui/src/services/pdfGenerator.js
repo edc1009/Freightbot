@@ -90,7 +90,7 @@ export const generateArrivalNoticePDF = (shipment) => {
     const containerData = [[
         shipment.container || shipment.container_number || "TBD",
         shipment.package_count || "1 Unit",
-        "CONSOLIDATED CARGO",
+        shipment.goods_description || "CONSOLIDATED CARGO",
         shipment.weight || "0 KGS",
         shipment.volume || "0 CBM"
     ]];
@@ -159,6 +159,156 @@ export const generateArrivalNoticePDF = (shipment) => {
     finalY = doc.lastAutoTable.finalY + 10;
     doc.setFontSize(7);
     doc.text("Please make checks payable to: PIONEER GLOBAL LOGISTICS INC.", 14, finalY);
+
+    return doc;
+};
+
+// Pioneer Global Logistics - Pick-Up & Delivery Instruction PDF Generator
+export const generatePickupInstructionPDF = (shipment, truckerInfo = {}) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // --- HEADER ---
+    doc.setFontSize(18);
+    doc.setTextColor(0, 51, 153); // Pioneer Blue
+    doc.setFont('helvetica', 'bold');
+    doc.text("PIONEER GLOBAL LOGISTICS INC.", pageWidth / 2, 15, { align: 'center' });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0);
+    doc.text("4710 ONTARIO MILLS PKWY, SUITE#B  ONTARIO, CA 91764 UNITED STATES", pageWidth / 2, 22, { align: 'center' });
+    doc.text("TEL: 909-493-3488 #119   FAX: 909-493-3498", pageWidth / 2, 27, { align: 'center' });
+
+    // Title
+    doc.setFontSize(20);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'bold');
+    doc.text("Pick-Up & Delivery Instruction", pageWidth / 2, 36, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+
+    // Draw underline
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.5);
+    doc.line(50, 38, 160, 38);
+
+    const startY = 44;
+    doc.setLineWidth(0.1);
+
+    // Helper to draw box with label and value
+    const drawBox = (x, y, w, h, label, value, labelColor = [100, 100, 100]) => {
+        doc.rect(x, y, w, h);
+        doc.setFontSize(7);
+        doc.setTextColor(...labelColor);
+        doc.text(label, x + 1, y + 3.5);
+        doc.setFontSize(9);
+        doc.setTextColor(0);
+        if (value) {
+            // Handle multi-line values
+            const lines = doc.splitTextToSize(String(value), w - 2);
+            let offsetY = 8;
+            lines.forEach((line, idx) => {
+                if (idx < 4) { // Max 4 lines
+                    doc.text(line, x + 1, y + offsetY);
+                    offsetY += 4;
+                }
+            });
+        }
+    };
+
+    // Get trucker info from stakeholders
+    const stakeholders = shipment.stakeholders || [];
+    const truckerEntry = stakeholders.find(s => s.role === 'Trucker') || {};
+    const warehouseEntry = stakeholders.find(s => s.role === 'Warehouse') || {};
+
+    // --- ROW 1: To Trucking Co. | Date | By ---
+    const truckerName = truckerEntry.name || truckerInfo.name || "TRUCKING COMPANY";
+    const truckerEmail = truckerEntry.email || truckerInfo.email || "";
+
+    drawBox(14, startY, 90, 25, "To Trucking Co.", `${truckerName}\n${truckerEmail}`);
+    drawBox(104, startY, 90, 12, "Date", new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }));
+    drawBox(104, startY + 12, 45, 13, "Commodity", shipment.goods_description || "CARGO");
+    drawBox(149, startY + 12, 45, 13, "Total Pkgs.", `${shipment.package_count || '1 Unit'}\n${shipment.container_type || '40HQ x 1'}`);
+
+    // --- ROW 2: Pick-Up At | Pick-Up Ref No | Pick-Up Contact ---
+    drawBox(14, startY + 25, 90, 10, "Pick-Up At :", shipment.firmsCode || "");
+    drawBox(104, startY + 25, 45, 10, "Pick-Up Ref. No.", shipment.pickup_ref || "");
+    drawBox(149, startY + 25, 45, 10, "Pick-Up Contact", shipment.pickup_contact || "");
+
+    // --- ROW 3: Pick-Up Date/Time ---
+    drawBox(14, startY + 35, 90, 10, "", "");
+    drawBox(104, startY + 35, 90, 10, "Pick-Up Date/Time", shipment.pickup_datetime || "");
+
+    // --- ROW 4: Deliver To | Delivery Ref No | Delivery Contact ---
+    const deliverTo = warehouseEntry.name || shipment.deliver_to || shipment.consignee || "";
+    const deliverAddress = shipment.delivery_address || shipment.destination || "";
+    const deliverContact = warehouseEntry.email || shipment.delivery_contact || "";
+
+    drawBox(14, startY + 45, 90, 25, "Deliver To :", `${deliverTo}\n${deliverAddress}\n${deliverContact}`);
+    drawBox(104, startY + 45, 45, 12, "Delivery Ref. No.", shipment.reference || shipment.hbl || "");
+    drawBox(149, startY + 45, 45, 12, "Delivery Contact", shipment.delivery_contact_name || "");
+    drawBox(104, startY + 57, 90, 13, "Delivery Date/Time", shipment.delivery_datetime || "");
+    drawBox(149, startY + 57, 45, 13, "Last Free Day", shipment.lfd || "");
+
+    // --- ROW 5: Bill To | Billing Reference No | Carrier ---
+    const billTo = `PIONEER GLOBAL LOGISTICS INC.\n4710 ONTARIO MILLS PKWY, SUITE#B\nONTARIO, CA 91764\nUNITED STATES\nTEL: 909-493-3488  FAX: 909-493-3498`;
+    drawBox(14, startY + 70, 90, 30, "Bill To", billTo);
+    drawBox(104, startY + 70, 45, 10, "Billing Reference No.", shipment.billing_ref || shipment.reference || "");
+    drawBox(149, startY + 70, 45, 10, "Carrier", shipment.carrier || "");
+    drawBox(104, startY + 80, 45, 10, "Master B/L No", shipment.bl || "");
+    drawBox(149, startY + 80, 45, 10, "Vessel & Voyage No", `${shipment.vessel || ''}`);
+
+    // --- ROW 6: Container Info ---
+    drawBox(14, startY + 100, 50, 10, "Container No. :", shipment.container_number || "");
+    drawBox(64, startY + 100, 40, 10, "I.T. No:", shipment.it_no || "");
+    drawBox(104, startY + 100, 45, 10, "House B/L No", shipment.hbl || "");
+    drawBox(149, startY + 100, 45, 10, "AMS House BL No.", shipment.ams_hbl || "");
+
+    drawBox(104, startY + 110, 45, 10, "Port of Discharge", shipment.pod || "LONG BEACH");
+    drawBox(149, startY + 110, 45, 10, "E.T.A", shipment.eta || "");
+
+    drawBox(104, startY + 120, 45, 10, "Place of Delivery", shipment.destination || "LONG BEACH");
+    drawBox(149, startY + 120, 45, 10, "E.T.A.", shipment.eta || "");
+
+    // --- CARGO TABLE ---
+    const tableStartY = startY + 135;
+
+    const cargoData = [[
+        shipment.marks || "N/M",
+        shipment.goods_description || "CONSOLIDATED CARGO",
+        shipment.package_count || "1 Unit",
+        shipment.weight || "0 KGS",
+        shipment.volume || "0 CBM"
+    ]];
+
+    autoTable(doc, {
+        startY: tableStartY,
+        head: [['MARK', 'DESCRIPTION', 'PKGS', 'WEIGHT', 'MEASUREMENT']],
+        body: cargoData,
+        theme: 'grid',
+        headStyles: { fillColor: [0, 51, 153], textColor: 255, fontSize: 8 },
+        bodyStyles: { fontSize: 8 },
+        columnStyles: {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 70 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 30 }
+        },
+        margin: { left: 14, right: 14 }
+    });
+
+    // --- SPECIAL INSTRUCTION ---
+    let finalY = doc.lastAutoTable.finalY + 5;
+    drawBox(14, finalY, 180, 20, "Special Instruction    :", shipment.special_instruction || "");
+
+    // --- FOOTER ---
+    finalY += 30;
+    doc.setFontSize(10);
+    doc.setTextColor(0, 100, 0); // Green
+    doc.setFont('helvetica', 'italic');
+    doc.text("You are requested to inform us immediately of any occurrence.", pageWidth / 2, finalY, { align: 'center' });
+    doc.text("Thank You for your  service !", pageWidth / 2, finalY + 6, { align: 'center' });
 
     return doc;
 };

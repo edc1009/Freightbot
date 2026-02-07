@@ -20,12 +20,11 @@ export const PLAYBOOKS = {
         conditions: { direction: 'import', containerType: 'FCL', delivery: 'door' },
         steps: [
             { name: 'ISF Filing', default: 'approve', manualTriggers: ['dispute', 'penalty', 'late'] },
-            { name: 'Await Arrival Notice', default: 'auto' },
-            { name: 'Arrival Notice', default: 'approve' },
+            { name: 'Await Carrier AN', default: 'auto' },
             { name: 'Truck Scheduling', default: 'approve', manualTriggers: ['surcharge', 'dispute'] },
             { name: 'Customs Coordination', default: 'auto', manualTriggers: ['hold', 'exam'] },
-            { name: 'Duty Confirmation', default: 'auto' },
             { name: 'Warehouse Coordination', default: 'approve', manualTriggers: ['exception'] },
+            { name: 'Shipment Delivery', default: 'auto' },
             { name: 'Billing & Collection', default: 'approve', manualTriggers: ['dispute', 'claim'] }
         ]
     },
@@ -61,7 +60,7 @@ export const PLAYBOOKS = {
 };
 
 // Step labels and icons
-export const stepLabels = ['ISF Filing', 'Await Arrival Notice', 'Arrival Notice', 'Trucker Coordination', 'Customs Coordination', 'Duty Confirmation', 'Warehouse Coordination', 'Billing & Collection'];
+export const stepLabels = ['ISF Filing', 'Await Carrier AN', 'Truck Scheduling', 'Customs Coordination', 'Warehouse Coordination', 'Shipment Delivery', 'Billing & Collection'];
 export const stepIcons = [FileText, Send, Truck, Building, DollarSign, Warehouse, FileText];
 
 // Design system CSS
@@ -71,7 +70,7 @@ export const designSystemCSS = `
     --background: oklch(0.9911 0 0);
     --foreground: oklch(0.2046 0 0);
     --card: oklch(0.9911 0 0);
-    --primary: oklch(0.8348 0.1302 160.9080);
+    --primary: oklch(0.7040 0.1400 182.5030);
     --primary-foreground: oklch(0.2626 0.0147 166.4589);
     --muted: oklch(0.9461 0 0);
     --muted-foreground: oklch(0.2435 0 0);
@@ -80,12 +79,13 @@ export const designSystemCSS = `
     --destructive: oklch(0.5523 0.1927 32.7272);
     --border: oklch(0.9037 0 0);
     --chart-2: oklch(0.6231 0.1880 259.8145);
-    --chart-3: oklch(0.6056 0.2189 292.7172);
+    --chart-3: oklch(0.6231 0.1880 259.8145);
     --chart-4: oklch(0.7686 0.1647 70.0804);
     --chart-5: oklch(0.6959 0.1491 162.4796);
     --sidebar-foreground: oklch(0.5452 0 0);
   }
   * { font-family: 'Outfit', sans-serif; box-sizing: border-box; }
+  html { overflow-y: scroll; }
   body { margin: 0; padding: 0; }
   input::placeholder { color: var(--sidebar-foreground); }
 `;

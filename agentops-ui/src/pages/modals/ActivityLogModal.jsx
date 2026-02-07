@@ -5,6 +5,7 @@ import {
     Paperclip, FileText
 } from 'lucide-react';
 import { PLAYBOOKS, AUTOMATION_LEVELS, stepLabels, stepIcons } from '../../constants';
+import { formatDateTime } from '../../utils';
 
 export default function ActivityLogModal({
     shipment,
@@ -18,10 +19,29 @@ export default function ActivityLogModal({
 }) {
     // 1. Get Emails
     const emails = shipment.emails || [];
+    const emailIds = new Set(emails.map(e => e.id));
 
     // 2. Map Activities to Pseudo-Emails
-    const shipmentActivities = activities.filter(a => a.shipment === shipment.reference || a.shipment === shipment.id);
+    const shipmentActivities = activities.filter(a =>
+        (a.shipment === shipment.reference || a.shipment === shipment.id) &&
+        a.message !== 'Shipment Updated via Agent' // Filter out redundant updates
+    );
     const activityItems = shipmentActivities.map(a => {
+        // If activity already contains a full email object (e.g., auto-sent email), use it directly
+        if (a.email && a.email.id) {
+            // FIX: Deduplicate - if this email is already in shipment.emails, skip it here
+            if (emailIds.has(a.email.id)) {
+                return null;
+            }
+
+            return {
+                ...a.email,
+                id: a.email.id || `act-email-${a.timestamp}`,
+                category: a.email.category || shipment.step || 1
+            };
+        }
+
+        // Otherwise, create a pseudo-email for system activities
         let category = 1; // Default
         const msg = a.message?.toLowerCase() || '';
         const type = a.type?.toLowerCase() || '';
@@ -29,11 +49,11 @@ export default function ActivityLogModal({
         // Heuristic Categorization
         if (msg.includes('isf') || type.includes('isf')) category = 1;
         else if (msg.includes('arrival notice') || msg.includes('an ')) category = 3; // Step 3
-        else if (msg.includes('trucker') || msg.includes('delivery')) category = 4; // Step 4
-        else if (msg.includes('customs') || msg.includes('entry')) category = 5;    // Step 5
-        else if (msg.includes('warehouse')) category = 7;                           // Step 7
-        else if (msg.includes('payment') || msg.includes('bill')) category = 8;     // Step 8
-        else if (msg.includes('release')) category = 5;                             // Step 5 (Release)
+        else if (msg.includes('trucker') || msg.includes('pickup') || msg.includes('truck')) category = 3;
+        else if (msg.includes('customs') || msg.includes('broker') || msg.includes('entry')) category = 4;
+        else if (msg.includes('warehouse') || msg.includes('delivery')) category = 5;
+        else if (msg.includes('payment') || msg.includes('bill')) category = 7;
+        else if (msg.includes('release')) category = 6;
         else category = shipment.step || 1; // Fallback to current step
 
         return {
@@ -42,14 +62,14 @@ export default function ActivityLogModal({
             direction: 'system', // Special direction for rendering
             from: 'System',
             to: '-',
-            subject: a.type === 'email-sent' ? 'Email Sent' : a.type === 'document' ? 'Document Generated' : 'System Activity',
-            body: a.message,
-            timestamp: new Date(a.timestamp).toLocaleString(),
+            subject: a.type === 'email-sent' ? 'Email Sent' : a.type === 'document' ? 'Document Generated' : (a.message || 'System Activity'),
+            body: a.detail || a.message,
+            timestamp: formatDateTime(a.timestamp),
             read: true,
             autoLevel: 'auto',
-            attachments: a.email?.attachments || [] // If activity wrapped an email
+            originalActivity: a // Keep reference for debugging
         };
-    });
+    }).filter(item => item !== null);
 
     // 3. Merge and Group
     const allItems = [...emails, ...activityItems];
@@ -124,19 +144,21 @@ function CategorySection({ category, emails, playbook, shipment, isExpanded, onT
     const levelConfig = stepLevel === 'auto' ? AUTOMATION_LEVELS.AUTO : stepLevel === 'approve' ? AUTOMATION_LEVELS.APPROVE : AUTOMATION_LEVELS.MANUAL;
 
     // Correct completion check for parallel items
-    // If this category is a parallel task (3=Trucker, 4=Customs, 6=Warehouse), check specific completion
+    // TASK_MAP uses 0-indexed values: idx 2=Truck, idx 3=Customs, idx 4=Warehouse
     const TASK_MAP = {
-        3: 'trucker_coordination',
-        4: 'customs_coordination',
-        6: 'warehouse_coordination'
+        2: 'truck_scheduling',       // idx 2 = Step 3: Truck Scheduling
+        3: 'customs_coordination',   // idx 3 = Step 4: Customs Coordination
+        4: 'warehouse_coordination'  // idx 4 = Step 5: Warehouse Coordination
     };
 
     let isComplete = false;
     if (shipment.status === 'completed') {
         isComplete = true;
     } else if (TASK_MAP[category - 1]) {
+        // category is 1-indexed, TASK_MAP uses 0-indexed, so check category-1
         isComplete = (shipment.completedTasks || []).includes(TASK_MAP[category - 1]);
     } else {
+        // Sequential step: complete when step pointer > category
         isComplete = category < shipment.step;
     }
 
@@ -206,7 +228,7 @@ function EmailItem({ email, isExpanded, onToggle }) {
                         {email.cc && <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>(CC: {email.cc})</span>}
                     </div>
                     <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--foreground)', margin: '0 0 4px 0' }}>{email.subject}</p>
-                    <p style={{ fontSize: 12, color: 'var(--sidebar-foreground)', margin: 0 }}>{email.timestamp}</p>
+                    <p style={{ fontSize: 12, color: 'var(--sidebar-foreground)', margin: 0 }}>{formatDateTime(email.timestamp)}</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     {email.direction === 'outbound' && email.autoLevel && (
@@ -250,15 +272,28 @@ function EmailItem({ email, isExpanded, onToggle }) {
                                             display: 'flex', alignItems: 'center', gap: 8,
                                             padding: '8px 12px', background: 'var(--card)',
                                             border: '1px solid var(--border)', borderRadius: 8,
-                                            fontSize: 13, color: 'var(--foreground)', cursor: 'pointer'
+                                            fontSize: 13, color: 'var(--foreground)', cursor: 'pointer',
+                                            transition: 'background 0.2s'
                                         }}
-                                        onClick={() => {
+                                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.background = 'var(--card)'}
+                                        onClick={(e) => {
+                                            // CRITICAL: Stop event bubbling to prevent parent onClick from triggering
+                                            e.stopPropagation();
+                                            
+                                            console.log('📎 Attachment clicked:', att.name);
+                                            console.log('📎 Content available:', !!att.content);
+                                            console.log('📎 Content length:', att.content?.length || 0);
+                                            console.log('📎 Content starts with:', att.content?.substring(0, 50));
+                                            
                                             try {
                                                 // 1. Try Blob approach (Best for performance/stability)
                                                 if (att.content && att.content.startsWith('data:')) {
+                                                    console.log('📎 Using data: URL approach');
                                                     const base64Arr = att.content.split(',');
                                                     const base64 = base64Arr[1] || base64Arr[0]; // Handle if data: prefix is missing
                                                     const mime = base64Arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+                                                    console.log('📎 Detected MIME type:', mime);
 
                                                     const byteCharacters = atob(base64);
                                                     const byteNumbers = new Array(byteCharacters.length);
@@ -268,20 +303,33 @@ function EmailItem({ email, isExpanded, onToggle }) {
                                                     const byteArray = new Uint8Array(byteNumbers);
                                                     const blob = new Blob([byteArray], { type: mime });
                                                     const blobUrl = URL.createObjectURL(blob);
+                                                    console.log('📎 Opening blob URL:', blobUrl);
+                                                    window.open(blobUrl, '_blank');
+                                                } else if (att.content && att.content.length > 100) {
+                                                    // 2. Raw base64 without data: prefix - assume PDF
+                                                    console.log('📎 Raw base64 detected, treating as PDF');
+                                                    const mime = att.type || 'application/pdf';
+                                                    const byteCharacters = atob(att.content);
+                                                    const byteNumbers = new Array(byteCharacters.length);
+                                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                                    }
+                                                    const byteArray = new Uint8Array(byteNumbers);
+                                                    const blob = new Blob([byteArray], { type: mime });
+                                                    const blobUrl = URL.createObjectURL(blob);
+                                                    console.log('📎 Opening blob URL:', blobUrl);
                                                     window.open(blobUrl, '_blank');
                                                 } else if (att.content) {
-                                                    // 2. Fallback for non-base64 (e.g. normal URLs)
+                                                    // 3. Fallback for URLs
+                                                    console.log('📎 Treating as URL');
                                                     window.open(att.content, '_blank');
                                                 } else {
-                                                    alert('File content not available.');
+                                                    console.warn('📎 No content available for attachment:', att.name);
+                                                    alert(`File content not available for: ${att.name}\n\nThe file may not have been properly attached or the content was not preserved.`);
                                                 }
                                             } catch (err) {
-                                                console.error('Error opening file:', err);
-                                                // 3. Fallback to basic iframe approach if Blob fails
-                                                const win = window.open();
-                                                if (win) {
-                                                    win.document.write('<iframe src="' + att.content + '" frameborder="0" style="border:0;width:100%;height:100%" allowfullscreen></iframe>');
-                                                }
+                                                console.error('📎 Error opening file:', err);
+                                                alert(`Error opening file: ${att.name}\n\n${err.message}`);
                                             }
                                         }}
                                     >

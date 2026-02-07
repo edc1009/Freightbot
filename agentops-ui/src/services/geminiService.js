@@ -25,7 +25,12 @@ const RESPONSE_SCHEMA = {
                     reference: { type: "STRING", description: "B/L Number or Container Number found" },
                     match_result: { type: "STRING", enum: ["FOUND", "NOT_FOUND"] },
                     shipment_id: { type: "STRING", nullable: true, description: "ID of the matching shipment in database" },
-                    action: { type: "STRING", enum: ["CREATE", "UPDATE"], description: "Proposed action for this specific shipment" },
+                    action: { type: "STRING", enum: ["CREATE", "UPDATE", "ESCALATE"], description: "Proposed action. Use ESCALATE if Carrier AN but no matching shipment found." },
+                    playbook: {
+                        type: "STRING",
+                        enum: ["import-fcl", "import-lcl", "free-hand"],
+                        description: "DEFAULT='free-hand'. ONLY use 'import-fcl' if EMAIL BODY explicitly says 'Please file ISF' or 'ISF needed'. Seeing 'ISF' in a form field does NOT count."
+                    },
                     extracted_data: {
                         type: "OBJECT",
                         description: "Data specific to this shipment extracted from its page/section",
@@ -44,6 +49,7 @@ const RESPONSE_SCHEMA = {
                             weight: { type: "STRING", nullable: true },
                             volume: { type: "STRING", nullable: true },
                             package_count: { type: "STRING", nullable: true },
+                            goods_description: { type: "STRING", nullable: true, description: "Description of goods from HBL. E.g. 'ELECTRONICS PARTS', 'FURNITURE'. Extract from HBL or shipping documents." },
                             shipper: { type: "STRING", nullable: true, description: "Shipper name and address" },
                             consignee: { type: "STRING", nullable: true, description: "Consignee name and address" },
                             notify_party: { type: "STRING", nullable: true, description: "Notify party name and address" }
@@ -58,7 +64,8 @@ const RESPONSE_SCHEMA = {
             properties: {
                 type: {
                     type: "STRING",
-                    enum: ["NEW_FREEHAND_INTENT", "CARRIER_AN", "STATUS_UPDATE", "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "INQUIRY", "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"]
+                    enum: ["NEW_FREEHAND_INTENT", "CARRIER_AN", "STATUS_UPDATE", "PAYMENT_CONFIRM", "PAYMENT_FOLLOWUP", "TRUCKER_CONFIRM", "CUSTOMS_CONFIRM", "CUSTOMS_CONFIRM_RESPONSE", "WAREHOUSE_CONFIRM", "DOCUMENT_SUBMISSION", "INQUIRY", "COMPLAINT", "INTERNAL_REQUEST", "FYI_NO_ACTION", "UNKNOWN"],
+                    description: "NEW types: TRUCKER_CONFIRM=Trucker confirms pickup schedule, CUSTOMS_CONFIRM=Broker confirms clearance, CUSTOMS_CONFIRM_RESPONSE=Customer approves 7501 duty"
                 },
                 sender: {
                     type: "OBJECT",
@@ -67,7 +74,8 @@ const RESPONSE_SCHEMA = {
                         name: { type: "STRING", nullable: true },
                         party_type: {
                             type: "STRING",
-                            enum: ["OVERSEAS_AGENT", "CUSTOMER", "CARRIER", "INTERNAL", "UNKNOWN"]
+                            enum: ["OVERSEAS_AGENT", "CUSTOMER", "CARRIER", "TRUCKER", "CUSTOMS_BROKER", "WAREHOUSE", "INTERNAL", "UNKNOWN"],
+                            description: "TRUCKER=Trucking company, CUSTOMS_BROKER=Customs broker/clearance agent, WAREHOUSE=Warehouse/CFS/receiving location"
                         }
                     }
                 },
@@ -220,9 +228,40 @@ You must distinguish between two critical document types based on the SENDER:
 
 TASK:
 1. Identify the Sender (Name, Email Domain, Signature).
-2. Classify the Email Type based on the logic above.
-3. Extract Shipment Data (MBL, HBL, Container, Vessel, ETA).
-4. Cross-reference with "EXISTING SHIPMENTS" database.
+2. **CRITICAL: Check if sender email matches any stakeholder in EXISTING SHIPMENTS database.**
+   - If sender email matches a stakeholder with role "Trucker" → sender.party_type = "TRUCKER"
+   - If sender email matches a stakeholder with role "Customs Broker" → sender.party_type = "CUSTOMS_BROKER"
+   - If sender email matches a stakeholder with role "Warehouse" → sender.party_type = "WAREHOUSE"
+3. Classify the Email Type based on the logic above.
+4. Extract Shipment Data (MBL, HBL, Container, Vessel, ETA).
+5. Cross-reference with "EXISTING SHIPMENTS" database.
+
+CRITICAL: MATCHING LOGIC (FUZZY MATCH)
+- **Hiearchy**: Match in this order:
+  1. **MBL** (Master Bill) - Primary Key.
+  2. **HBL** (House Bill) - Secondary Key.
+  3. **Container Number** - Strong Signal.
+- **Normalization**: When comparing, IGNORE spaces, dashes, dots, and case.
+  - Example: "NYKU-123 456" matches "NYKU123456".
+- **Logic**: If MBL is missing in the document, try to match by HBL or Container.
+
+CRITICAL: PLAYBOOK CLASSIFICATION (FREE-HAND IS DEFAULT)
+- **DEFAULT BEHAVIOR**: Always use playbook = "free-hand" unless you find EXPLICIT evidence otherwise.
+- **ONLY use import-fcl** if ALL of these conditions are met:
+  1. The EMAIL BODY (not attachments!) explicitly requests ISF filing.
+  2. The request uses action words like: "Please file ISF", "ISF needed", "Require ISF filing", "File ISF for this shipment".
+- **DO NOT classify as import-fcl** if you only see:
+  - "ISF" in a form field, table header, or checkbox
+  - "ISF: N/A", "ISF: TBD", "ISF filed by shipper"
+  - "ISF" anywhere in an attachment (PDF, image, etc.)
+  - Any other passive mention of ISF
+- **When in doubt, use "free-hand".** This is a SAFETY DEFAULT.
+
+CRITICAL: CARRIER AN RULE (NO CREATE)
+- **Constraint**: If document is "Arrival Notice" from a CARRIER:
+  - You must **NEVER** return action "CREATE".
+  - If a matching shipment (by MBL, HBL, or Container) is found -> Action: "UPDATE".
+  - If NO matching shipment is found -> Action: "ESCALATE" (Reason: "Carrier AN received but no matching shipment found in database").
 
 COMMUNICATION PROTOCOL (Rules of Engagement):
 - **Scenario 1: Received Pre-alert from Overseas Agent**
@@ -235,6 +274,53 @@ COMMUNICATION PROTOCOL (Rules of Engagement):
 - **Scenario 2: Received Carrier Arrival Notice**
   - **Action**: No immediate email reply needed to Carrier.
   - **Internal Action**: Update system status.
+
+- **Scenario 3: Trucker Confirmation (TRUCKER_CONFIRM)**
+  - **Trigger**: Email/reply from Trucker containing ANY language indicating they acknowledge or will pickup/deliver.
+  - **Keywords (any language)**: 
+    - English: "confirm", "will do", "scheduled", "can do", "OK", "agreed", "got it", "understood"
+    - Chinese: "確認", "知道了", "會送到", "會提貨", "安排", "收到", "好的", "沒問題", "了解"
+  - **Examples of TRUCKER_CONFIRM**:
+    - "知道了 7/2會送到" → TRUCKER_CONFIRM (means "Got it, will deliver on 7/2")
+    - "OK, will pick up tomorrow" → TRUCKER_CONFIRM
+    - "收到，明天提貨" → TRUCKER_CONFIRM
+  - **Intent**: Trucker is confirming they received our P/D instruction and will pickup/deliver.
+  - **CRITICAL**: If sender party_type is TRUCKER and they reply with ANY acknowledgment, classify as TRUCKER_CONFIRM.
+  - **Classification**: email_analysis.type = "TRUCKER_CONFIRM", sender.party_type = "TRUCKER"
+
+- **Scenario 4: Customs Broker Confirmation (CUSTOMS_CONFIRM)**
+  - **Trigger**: Email from Customs Broker with 7501 or duty information.
+  - **Keywords (any language)**: 
+    - English: "7501", "duty", "customs entry", "entry summary", "clearance", "released", "duty amount", "check attached"
+    - Chinese: "關稅", "7501表", "已報關", "放行", "稅金"
+  - **Examples of CUSTOMS_CONFIRM**:
+    - "Attached is the 7501, duty amount is $1,234.56" → CUSTOMS_CONFIRM
+    - "Please check attached 7501 and confirmed with us." → CUSTOMS_CONFIRM
+    - "Customs entry filed, duty $500" → CUSTOMS_CONFIRM
+    - "Shipment has been released" → CUSTOMS_CONFIRM
+  - **Intent**: Broker provides Form 7501 (duty amount) or confirms clearance is complete.
+  - **CRITICAL**: If sender party_type is CUSTOMS_BROKER and email mentions "7501" or "duty", classify as CUSTOMS_CONFIRM.
+  - **Classification**: email_analysis.type = "CUSTOMS_CONFIRM", sender.party_type = "CUSTOMS_BROKER"
+
+- **Scenario 4.5: Customer 7501 Confirmation (CUSTOMS_CONFIRM_RESPONSE)**
+  - **Trigger**: Email from Consignee/Customer replying to our 7501 Duty Confirmation request.
+  - **Keywords (any language)**:
+    - English: "Confirm", "Proceed", "Go ahead", "Approved", "OK", "Please pay"
+    - Chinese: "確認", "沒問題", "好的", "請支付", "批准", "OK", "收到"
+    - Context: Referencing "7501", "Duty", "Tax", or replying to a subject like "Customs Duty Confirmation".
+  - **Intent**: The Customer agrees to the duty amount and authorizes us to proceed.
+  - **Classification**: email_analysis.type = "CUSTOMS_CONFIRM_RESPONSE", sender.party_type = "CUSTOMER"
+
+- **Scenario 5: Warehouse Confirmation (WAREHOUSE_CONFIRM)**
+  - **Trigger**: Email from Warehouse/Consignee confirming delivery received.
+  - **Keywords**: "received", "delivered", "已收貨", "POD", "delivery confirmed", etc.
+  - **Classification**: email_analysis.type = "WAREHOUSE_CONFIRM"
+
+- **Scenario 6: Document Submission (DOCUMENT_SUBMISSION)**
+  - **Trigger**: Customer/Agent sends customs documents.
+  - **Documents**: Commercial Invoice (CI), Packing List (PL), Weight List, TLX B/L, etc.
+  - **Intent**: Consignee is providing documents needed for customs filing.
+  - **Classification**: email_analysis.type = "DOCUMENT_SUBMISSION"
 
 CRITICAL: BATCH PROCESSING
 - The PDF may contain MULTIPLE shipments. Iterate through ALL pages.
@@ -273,13 +359,15 @@ CRITICAL: NO REPETITION
 
 ONE-SHOT REASONING EXAMPLE (GOLD STANDARD):
 "Reviewing document 'AN.pdf'. Found MBL: EGLV123456, HBL: SH999.
+Matching: Found existing shipment SH999 in DB (Matched via HBL).
+Decision: Update existing shipment SH999.
 Checking Consignee: MBL lists 'Pioneer Global' (US). HBL lists 'Target Stores' (Customer).
 Decision: Ignore MBL Consignee. Use 'Target Stores' as Shipment Consignee.
 Checking Vessel: OCR reads 'OOCL BRUSSELS V.067E / VOY 067E'.
-Self-Correction: 'V.067E / VOY 067E' is repetitive. I will extract simplified format: 'OOCL BRUSSELS 067E'.
+Self-Correction: Extract simplified format: 'OOCL BRUSSELS 067E'.
 Checking Charges: Carrier AN lists $500 Ocean Freight.
-Decision: This is Cost. Set Authority to APPROVE.
-Final Action: Create Shipment SH999."
+Decision: This is Cost. Authority: APPROVE.
+Final Action: UPDATE SH999."
 
 OUTPUT:
 - Return ONLY valid JSON matching the schema.
@@ -325,9 +413,16 @@ export async function processEmailWithAgent(apiKey, emailData, existingShipments
         id: s.id,
         ref: s.reference,
         bl: s.bl,
-        container: s.container,
+        hbl: s.hbl,
+        container: s.container_number || s.container,
         status: s.status,
-        customer: s.customer
+        customer: s.customer,
+        // Include stakeholders so Agent can match sender email to role
+        stakeholders: (s.stakeholders || []).map(st => ({
+            role: st.role,
+            email: st.email,
+            name: st.name
+        }))
     }));
     const shipmentContextStr = JSON.stringify(shipmentContext, null, 2);
 

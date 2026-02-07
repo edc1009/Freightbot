@@ -26,54 +26,58 @@ export default function ShipmentCard({ shipment, onClick, onDelete }) {
                 position: 'relative'
             }}
         >
-            {/* Delete button */}
-            {onDelete && (
-                <button
-                    onClick={handleDelete}
-                    style={{
-                        position: 'absolute',
-                        top: 12,
-                        right: 12,
-                        padding: 8,
-                        background: 'var(--muted)',
-                        border: 'none',
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                        opacity: 0.6,
-                        transition: 'opacity 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.target.style.opacity = 1}
-                    onMouseLeave={(e) => e.target.style.opacity = 0.6}
-                    title="Delete shipment"
-                >
-                    <Trash2 style={{ width: 16, height: 16, color: 'var(--destructive)' }} />
-                </button>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, paddingRight: onDelete ? 40 : 0 }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 600, fontSize: 16 }}>{shipment.reference}</span>
-                        {shipment.alerts > 0 && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: 'oklch(0.92 0.06 32)', color: 'var(--destructive)', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                                <AlertTriangle style={{ width: 12, height: 12 }} />{shipment.alerts}
-                            </span>
-                        )}
-                        {pendingApprove > 0 && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: 'oklch(0.95 0.08 70)', color: 'oklch(0.45 0.12 70)', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                                <Edit3 style={{ width: 12, height: 12 }} />{pendingApprove} to approve
-                            </span>
-                        )}
-                        {pendingManual > 0 && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: 'oklch(0.92 0.06 32)', color: 'var(--destructive)', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                                <Shield style={{ width: 12, height: 12 }} />{pendingManual} manual
-                            </span>
-                        )}
-                    </div>
-                    <p style={{ fontSize: 14, color: 'var(--sidebar-foreground)', margin: '4px 0 0 0' }}>{shipment.customer}</p>
-                    {playbook && <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '2px 0 0 0', fontWeight: 500 }}>{playbook.name}</p>}
+            {/* 第一行：reference + 狀態徽章 + 刪除按鈕 */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                {/* 左側：reference 和 badges */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: 16 }}>{shipment.reference}</span>
+                    {shipment.alerts > 0 && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: 'oklch(0.92 0.06 32)', color: 'var(--destructive)', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+                            <AlertTriangle style={{ width: 12, height: 12 }} />{shipment.alerts}
+                        </span>
+                    )}
+                    {pendingApprove > 0 && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: 'oklch(0.95 0.08 70)', color: 'oklch(0.45 0.12 70)', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+                            <Edit3 style={{ width: 12, height: 12 }} />{pendingApprove} to approve
+                        </span>
+                    )}
+                    {pendingManual > 0 && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: 'oklch(0.92 0.06 32)', color: 'var(--destructive)', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+                            <Shield style={{ width: 12, height: 12 }} />{pendingManual} manual
+                        </span>
+                    )}
                 </div>
-                <span style={{ padding: '5px 14px', borderRadius: 999, fontSize: 12, fontWeight: 600, ...getStatusStyle(shipment.status) }}>{shipment.status.replace('-', ' ')}</span>
+                {/* 右側：狀態徽章 + 刪除按鈕 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <span style={{ padding: '5px 14px', borderRadius: 10, fontSize: 12, fontWeight: 600, ...getStatusStyle(shipment.status) }}>{shipment.status.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                    {onDelete && (
+                        <button
+                            onClick={handleDelete}
+                            style={{
+                                padding: 6,
+                                background: 'var(--muted)',
+                                border: 'none',
+                                borderRadius: 5,
+                                cursor: 'pointer',
+                                opacity: 0.5,
+                                transition: 'opacity 0.2s',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                            onMouseLeave={(e) => e.currentTarget.style.opacity = 0.5}
+                            title="Delete shipment"
+                        >
+                            <Trash2 style={{ width: 14, height: 14, color: 'var(--destructive)' }} />
+                        </button>
+                    )}
+                </div>
+            </div>
+            {/* 第二行：customer 和 playbook */}
+            <div style={{ marginBottom: 14 }}>
+                <p style={{ fontSize: 14, color: 'var(--sidebar-foreground)', margin: '4px 0 0 0' }}>{shipment.customer}</p>
+                {playbook && <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '2px 0 0 0', fontWeight: 500 }}>{playbook.name}</p>}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted-foreground)', marginBottom: 18 }}>
                 <span style={{ fontWeight: 500 }}>{shipment.origin}</span>
