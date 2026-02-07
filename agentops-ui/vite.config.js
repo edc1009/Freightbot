@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-    base: '/Gemini3-Ocean-freight-AI-agent/',  // ⚠️ 請改成你的新 repo 名稱！
+    base: '/Freightbot/',
     plugins: [react()],
     server: {
         fs: {
